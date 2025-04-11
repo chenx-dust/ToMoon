@@ -6,7 +6,7 @@ import axios from 'axios'
 
 function App() {
   const [url, setUrl] = useState("");
-  const [isSubscribed, setIsSubscribed] = useState(true);
+  const [isSubscribed, setIsSubscribed] = useState(false);
 
   const handleUrlChange = (event) => {
     setUrl(event.target.value);
@@ -75,18 +75,25 @@ const on_download_btn_click = (url, isSubscribed) => {
         confirmButtonColor: '#5A6242',
         background: '#DEE7BF'
       });
-    }
-  }).catch(error => {
-    if (error.response) {
+    } else {
       Swal.fire({
         icon: 'error',
         iconColor: '#5E5F55',
-        title: '失败',
-        text: error.response.data?.error?.message,
+        title: '后端失败',
+        html: `错误状态: ${response.status}<br>错误信息: ${response.data?.error?.message}`,
         confirmButtonColor: '#5A6242',
         background: '#DEE7BF'
       });
     }
+  }).catch(error => {
+    Swal.fire({
+      icon: 'error',
+      iconColor: '#5E5F55',
+      title: '请求失败',
+      html: `错误类型: ${error.name}<br>错误信息: ${error?.message}`,
+      confirmButtonColor: '#5A6242',
+      background: '#DEE7BF'
+    });
   });
 
 }
