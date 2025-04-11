@@ -730,20 +730,25 @@ pub async fn download_sub(
                     ref lower if lower.ends_with(".yaml") || lower.ends_with(".yml") => filename,
                     _ => filename + ".yaml",
                 };
-                let path = path.join(filename);
-                if fs::metadata(&path).is_ok() {
-                    // 如果文件名重复，则尝试删除原有
-                    if let Err(e) = fs::remove_file(&path) {
-                        log::error!("Failed while removing old sub.");
-                        log::error!("Error Message:{}", e);
+                let mut filepath = path.join(filename.clone());
+                if filepath.exists() {
+                    for i in 1..=128 {
+                        let new_filename = format!("{}_{}.yaml", filename.trim_end_matches(".yaml"), i);
+                        filepath = path.join(new_filename);
+                        if !filepath.exists() {
+                            break;
+                        }
+                    }
+                    if filepath.exists() {
+                        log::error!("Failed while saving sub, cannot find a new name.");
                         return Err(actix_web::Error::from(ClashError {
-                            Message: e.to_string(),
+                            Message: "The file already exists.".to_string(),
                             ErrorKind: ClashErrorKind::InnerError,
                         }));
                     }
                 }
                 //保存订阅
-                if let Some(parent) = path.parent() {
+                if let Some(parent) = filepath.parent() {
                     if let Err(e) = std::fs::create_dir_all(parent) {
                         log::error!("Failed while creating sub dir.");
                         log::error!("Error Message:{}", e);
@@ -753,7 +758,7 @@ pub async fn download_sub(
                         }));
                     }
                 }
-                let path = path.to_str().unwrap();
+                let path = filepath.to_str().unwrap();
                 log::info!("Writing to path: {}", path);
                 if let Err(e) = fs::write(path, response) {
                     log::error!("Failed while saving sub.");
