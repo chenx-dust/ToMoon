@@ -127,6 +127,7 @@ export const Subscriptions: FC<SubProp> = ({ Subscriptions }) => {
         <div id="subscription-qrcode">
           <QRCodeCanvas value={QRPageUrl} size={128} />
         </div>
+        <p style={{ textAlign: "center" }}>{QRPageUrl}</p>
         <div id="subscription-download-textfiled" style={cleanPadding}>
           <TextField
             label={localizationManager.getString(L.SUBSCRIPTIONS_LINK)}
