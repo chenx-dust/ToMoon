@@ -2,12 +2,8 @@ use actix_web::{body::BoxBody, web, HttpResponse, Result};
 use local_ip_address::local_ip;
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use std::{collections::HashMap, fs, path::PathBuf, sync::Mutex};
-use tokio::net::TcpStream;
-use tokio::process::Command;
-use tokio::sync::mpsc;
-use tokio::time::sleep;
+use content_disposition;
 
 use crate::{
     control::{ClashError, ClashErrorKind, EnhancedMode},
@@ -693,7 +689,7 @@ pub async fn download_sub(
             .with_header(
                 "User-Agent",
                 format!(
-                    "ToMoon/{} mihomo/1.18.3 Clash/v1.18.0",
+                    "ToMoon/{} mihomo/1.19.4 clash-verge/2.2.3 Clash/v1.18.0",
                     env!("CARGO_PKG_VERSION")
                 ),
             )
@@ -710,41 +706,41 @@ pub async fn download_sub(
                         ErrorKind: ClashErrorKind::ConfigFormatError,
                     }));
                 }
-                let filename = x.headers.get("content-disposition");
-                let filename = match filename {
-                    Some(x) => {
-                        let filename = x.split("filename=").collect::<Vec<&str>>()[1]
-                            .split(";")
-                            .collect::<Vec<&str>>()[0]
-                            .replace("\"", "");
-                        filename.to_string()
-                    }
-                    None => {
-                        let slash_split = *url.split("/").collect::<Vec<&str>>().last().unwrap();
-                        slash_split
-                            .split("?")
-                            .collect::<Vec<&str>>()
-                            .first()
-                            .unwrap()
-                            .to_string()
-                    }
+                let filename = x.headers.get("content-disposition")
+                    .and_then(|header| {
+                        // 尝试从 content-disposition 头部获取文件名
+                        // header.split("filename=").nth(1)
+                        //     .and_then(|s| s.split(';').next())
+                        //     .map(|s| s.trim_matches('"'))
+                        content_disposition::parse_content_disposition(header).filename_full()
+                    })
+                    .filter(|s| !s.is_empty())
+                    .or_else(|| {
+                        // 如果 content-disposition 头部中没有文件名，则尝试从 URL 中获取
+                        log::info!("Failed to get content-disposition, using url instead.");
+                        url.rsplit('/').next()
+                            .and_then(|last_part| last_part.split('?').next()).map(|s| s.to_string())
+                    })
+                    .unwrap_or_else(|| {
+                        // 如果 URL 中没有文件名，则生成一个随机文件名
+                        log::warn!("The downloaded subscription does not have a file name.");
+                        gen_random_name()
+                    });
+                let filename = match filename.to_ascii_lowercase() {
+                    ref lower if lower.ends_with(".yaml") || lower.ends_with(".yml") => filename,
+                    _ => filename + ".yaml",
                 };
-                let filename = if filename.is_empty() {
-                    log::warn!("The downloaded subscription does not have a file name.");
-                    gen_random_name()
-                } else {
-                    filename
-                };
-                let filename = if filename.to_lowercase().ends_with(".yaml")
-                    || filename.to_lowercase().ends_with(".yml")
-                {
-                    filename
-                } else {
-                    filename + ".yaml"
-                };
-                let mut path = path.join(filename);
+                let path = path.join(filename);
                 if fs::metadata(&path).is_ok() {
-                    path = path.parent().unwrap().join(gen_random_name() + ".yaml");
+                    // 如果文件名重复，则尝试删除原有
+                    if let Err(e) = fs::remove_file(&path) {
+                        log::error!("Failed while removing old sub.");
+                        log::error!("Error Message:{}", e);
+                        return Err(actix_web::Error::from(ClashError {
+                            Message: e.to_string(),
+                            ErrorKind: ClashErrorKind::InnerError,
+                        }));
+                    }
                 }
                 //保存订阅
                 if let Some(parent) = path.parent() {
