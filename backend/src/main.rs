@@ -1,6 +1,5 @@
 mod api;
 mod services;
-mod external_web;
 mod utils;
 mod settings;
 mod test;
@@ -14,8 +13,8 @@ use simplelog::{ColorChoice, CombinedLogger, LevelFilter, TermLogger, TerminalMo
 use usdpl_back::Instance;
 
 use crate::{
-    services::clash::ClashRuntime,
-    external_web::Runtime,
+    services::clash::runtime::Runtime,
+    api::actix::RuntimePtr,
 };
 
 const PORT: u16 = 55555;
@@ -61,30 +60,30 @@ async fn main() -> Result<(), std::io::Error> {
         .unwrap();
     }
 
-    log::info!("Starting back-end ({} v{})", api::NAME, api::VERSION);
+    log::info!("Starting back-end ({} v{})", api::usdpl::NAME, api::usdpl::VERSION);
     log::info!("{}", std::env::current_dir().unwrap().to_str().unwrap());
-    println!("Starting back-end ({} v{})", api::NAME, api::VERSION);
+    println!("Starting back-end ({} v{})", api::usdpl::NAME, api::usdpl::VERSION);
 
-    let runtime: ClashRuntime = services::clash::ClashRuntime::new();
+    let runtime = Runtime::new();
     runtime.run();
 
-    let runtime_pr = Runtime(&runtime as *const ClashRuntime);
+    let runtime_pr = RuntimePtr(&runtime as *const Runtime);
 
     thread::spawn(move || {
         Instance::new(PORT)
-            .register("set_clash_status", api::set_clash_status(&runtime))
-            .register("get_clash_status", api::get_clash_status(&runtime))
-            .register("reset_network", api::reset_network())
-            .register("download_sub", api::download_sub(&runtime))
-            .register("get_download_status", api::get_download_status(&runtime))
-            .register("get_sub_list", api::get_sub_list(&runtime))
-            .register("get_current_sub", api::get_current_sub(&runtime))
-            .register("delete_sub", api::delete_sub(&runtime))
-            .register("set_sub", api::set_sub(&runtime))
-            .register("update_subs", api::update_subs(&runtime))
-            .register("get_update_status", api::get_update_status(&runtime))
-            .register("create_debug_log", api::create_debug_log(&runtime))
-            .register("get_running_status", api::get_running_status(&runtime))
+            .register("set_clash_status", api::usdpl::set_clash_status(&runtime))
+            .register("get_clash_status", api::usdpl::get_clash_status(&runtime))
+            .register("reset_network", api::usdpl::reset_network())
+            .register("download_sub", api::usdpl::download_sub(&runtime))
+            .register("get_download_status", api::usdpl::get_download_status(&runtime))
+            .register("get_sub_list", api::usdpl::get_sub_list(&runtime))
+            .register("get_current_sub", api::usdpl::get_current_sub(&runtime))
+            .register("delete_sub", api::usdpl::delete_sub(&runtime))
+            .register("set_sub", api::usdpl::set_sub(&runtime))
+            .register("update_subs", api::usdpl::update_subs(&runtime))
+            .register("get_update_status", api::usdpl::get_update_status(&runtime))
+            .register("create_debug_log", api::usdpl::create_debug_log(&runtime))
+            .register("get_running_status", api::usdpl::get_running_status(&runtime))
             .run_blocking()
             .unwrap();
     });
@@ -122,7 +121,7 @@ async fn main() -> Result<(), std::io::Error> {
         }
     });
 
-    let app_state = web::Data::new(external_web::AppState {
+    let app_state = web::Data::new(api::actix::AppState {
         link_table: Mutex::new(HashMap::new()),
         runtime: Mutex::new(runtime_pr),
     });
@@ -137,39 +136,39 @@ async fn main() -> Result<(), std::io::Error> {
             .wrap(middleware::Logger::default())
             .wrap(cors)
             .service(
-                web::resource("/download_sub").route(web::post().to(external_web::download_sub)),
+                web::resource("/download_sub").route(web::post().to(api::actix::download_sub)),
             )
-            .service(web::resource("/get_link").route(web::get().to(external_web::get_link)))
+            .service(web::resource("/get_link").route(web::get().to(api::actix::get_link)))
             .service(
                 web::resource("/get_ip_address")
-                    .route(web::get().to(external_web::get_local_web_address)),
+                    .route(web::get().to(api::actix::get_local_web_address)),
             )
-            .service(web::resource("/skip_proxy").route(web::post().to(external_web::skip_proxy)))
+            .service(web::resource("/skip_proxy").route(web::post().to(api::actix::skip_proxy)))
             .service(
-                web::resource("/override_dns").route(web::post().to(external_web::override_dns)),
+                web::resource("/override_dns").route(web::post().to(api::actix::override_dns)),
             )
             .service(
-                web::resource("/enhanced_mode").route(web::post().to(external_web::enhanced_mode)),
+                web::resource("/enhanced_mode").route(web::post().to(api::actix::enhanced_mode)),
             )
-            .service(web::resource("/get_config").route(web::get().to(external_web::get_config)))
+            .service(web::resource("/get_config").route(web::get().to(api::actix::get_config)))
             //.service(web::resource("/manual").route(web::get().to(external_web.web_download_sub)))
             // allow_remote_access
             .service(
                 web::resource("/allow_remote_access")
-                    .route(web::post().to(external_web::allow_remote_access)),
+                    .route(web::post().to(api::actix::allow_remote_access)),
             )
             // reload_clash_config
             .service(
                 web::resource("/reload_clash_config")
-                    .route(web::get().to(external_web::reload_clash_config)),
+                    .route(web::get().to(api::actix::reload_clash_config)),
             )
             // restart_clash
             .service(
-                web::resource("/restart_clash").route(web::get().to(external_web::restart_clash)),
+                web::resource("/restart_clash").route(web::get().to(api::actix::restart_clash)),
             )
             // set_dashboard
             .service(
-                web::resource("/set_dashboard").route(web::post().to(external_web::set_dashboard)),
+                web::resource("/set_dashboard").route(web::post().to(api::actix::set_dashboard)),
             )
             // web
             .service(

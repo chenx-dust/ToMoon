@@ -79,3 +79,15 @@ pub fn get_file_path(url: String) -> Option<String> {
     };
     return None;
 }
+
+pub fn settings_path<P: AsRef<std::path::Path>>(home: P) -> std::path::PathBuf {
+    home.as_ref().join(".config/tomoon/tomoon.json")
+}
+
+pub fn get_decky_data_dir() -> std::io::Result<std::path::PathBuf> {
+    let data_dir = get_current_working_dir()?
+        .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
+        .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
+        .join("data/tomoon");
+    Ok(data_dir)
+}

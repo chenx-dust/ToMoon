@@ -1,12 +1,12 @@
 use std::{fs, path::PathBuf, thread};
 
 use crate::{
-    services::clash::{DownloadStatus, RunningStatus},
+    services::clash::runtime::{DownloadStatus, RunningStatus},
     utils,
     settings::{State, Subscription},
 };
 
-use super::services::clash::ClashRuntime;
+use crate::services::clash::runtime::Runtime;
 
 use rand::{distributions::Alphanumeric, Rng};
 use usdpl_back::core::serdes::Primitive;
@@ -14,7 +14,7 @@ use usdpl_back::core::serdes::Primitive;
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const NAME: &'static str = env!("CARGO_PKG_NAME");
 
-pub fn get_clash_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_settings = runtime.settings_clone();
     move |_| {
         let mut lock = match runtime_settings.write() {
@@ -40,7 +40,7 @@ pub fn get_clash_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Ve
     }
 }
 
-pub fn set_clash_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn set_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_settings = runtime.settings_clone();
     let runtime_state = runtime.state_clone();
     let clash = runtime.clash_state_clone();
@@ -146,7 +146,7 @@ pub fn reset_network() -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     }
 }
 
-pub fn download_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn download_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let download_status = runtime.downlaod_status_clone();
     let runtime_state = runtime.state_clone();
     let runtime_setting = runtime.settings_clone();
@@ -342,7 +342,7 @@ pub fn download_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Pr
     }
 }
 
-pub fn get_download_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_download_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let download_status = runtime.downlaod_status_clone();
     move |_| {
         match download_status.read() {
@@ -358,7 +358,7 @@ pub fn get_download_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) ->
     }
 }
 
-pub fn get_running_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_running_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let running_status = runtime.running_status_clone();
     move |_| {
         match running_status.read() {
@@ -374,7 +374,7 @@ pub fn get_running_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> 
     }
 }
 
-pub fn get_sub_list(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_sub_list(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
     move |_| {
         match runtime_setting.read() {
@@ -403,7 +403,7 @@ pub fn get_sub_list(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Pr
 }
 
 // get_current_sub 获取当前订阅
-pub fn get_current_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_current_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
     move |_| {
         match runtime_setting.read() {
@@ -418,7 +418,7 @@ pub fn get_current_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec
     }
 }
 
-pub fn delete_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn delete_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
     let runtime_state = runtime.state_clone();
     move |params| {
@@ -459,7 +459,7 @@ pub fn delete_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Prim
     }
 }
 
-pub fn set_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn set_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_clash = runtime.clash_state_clone();
     let runtime_state = runtime.state_clone();
     let runtime_setting = runtime.settings_clone();
@@ -500,7 +500,7 @@ pub fn set_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primiti
     }
 }
 
-pub fn update_subs(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn update_subs(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_update_status = runtime.update_status_clone();
     let runtime_setting = runtime.settings_clone();
     move |_| {
@@ -578,7 +578,7 @@ pub fn update_subs(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Pri
     }
 }
 
-pub fn get_update_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_update_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let update_status = runtime.update_status_clone();
     move |_| {
         match update_status.read() {
@@ -594,7 +594,7 @@ pub fn get_update_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> V
     }
 }
 
-pub fn create_debug_log(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn create_debug_log(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     //let update_status = runtime.update_status_clone();
     let home = match runtime.state_clone().read() {
         Ok(state) => state.home.clone(),

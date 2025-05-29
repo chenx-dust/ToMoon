@@ -6,17 +6,17 @@ use std::{collections::HashMap, fs, path::PathBuf, sync::Mutex};
 use content_disposition;
 
 use crate::{
-    services::clash::{ClashError, ClashErrorKind, EnhancedMode},
+    services::clash::controller::{ClashError, ClashErrorKind, EnhancedMode},
     utils,
     settings::State,
 };
 
-pub struct Runtime(pub *const crate::services::clash::ClashRuntime);
-unsafe impl Send for Runtime {}
+pub struct RuntimePtr(pub *const crate::services::clash::runtime::Runtime);
+unsafe impl Send for RuntimePtr {}
 
 pub struct AppState {
     pub link_table: Mutex<HashMap<u16, String>>,
-    pub runtime: Mutex<Runtime>,
+    pub runtime: Mutex<RuntimePtr>,
 }
 
 #[derive(Deserialize)]

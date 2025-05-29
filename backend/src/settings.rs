@@ -3,7 +3,7 @@ use std::{fmt::Display, path::PathBuf};
 
 use crate::utils;
 
-use crate::services::clash::EnhancedMode;
+use crate::services::clash::controller::EnhancedMode;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Settings {
