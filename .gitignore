@@ -53,9 +53,9 @@ build.*.sh
 
 release
 
-clash
+# clash
 .history
-web
+# web
 
 pnpm-lock.yaml
 src/usdpl
