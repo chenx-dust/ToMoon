@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
 
-    use crate::helper;
+    use crate::utils;
     use regex::Regex;
     use serde_yaml::{Mapping, Value};
     use std::{
@@ -21,7 +21,7 @@ mod tests {
 
     #[test]
     fn read_dns() {
-        assert_eq!(helper::is_clash_running(), true);
+        assert_eq!(utils::is_clash_running(), true);
     }
 
     #[test]
@@ -69,14 +69,14 @@ mod tests {
     // #[test]
     // fn test_yaml() {
     //     println!("{}", std::env::current_dir().unwrap().to_str().unwrap());
-    //     let mut clash = control::Clash::default();
+    //     let mut clash = services::clash::Clash::default();
     //     clash.change_config(true, true, true, true);
     // }
 
     #[test]
     fn regex_test() {
         let url = String::from("file:///home/dek/b.yaml");
-        if let Some(path) = helper::get_file_path(url) {
+        if let Some(path) = utils::get_file_path(url) {
             println!("{}", path);
         }
     }
@@ -249,7 +249,7 @@ mod tests {
     fn debug_log() {
         let running_status = format!(
             "Clash status : {} \n",
-            helper::is_clash_running()
+            utils::is_clash_running()
         );
         let tomoon_log = match fs::read_to_string("/tmp/tomoon.log") {
             Ok(x) => x,

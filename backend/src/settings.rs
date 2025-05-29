@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, path::PathBuf};
 
-use crate::helper;
+use crate::utils;
 
-use crate::control::EnhancedMode;
+use crate::services::clash::EnhancedMode;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Settings {
@@ -56,7 +56,7 @@ fn default_secret() -> String {
 }
 
 fn default_current_sub() -> String {
-    let default_profile = helper::get_current_working_dir()
+    let default_profile = utils::get_current_working_dir()
         .unwrap()
         .join("bin/core/config.yaml");
     default_profile.to_string_lossy().to_string()
@@ -145,7 +145,7 @@ impl Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        let default_profile = helper::get_current_working_dir()
+        let default_profile = utils::get_current_working_dir()
             .unwrap()
             .join("bin/core/config.yaml");
         Self {

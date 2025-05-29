@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, RwLock};
 
@@ -9,12 +8,12 @@ use std::{error, fs, thread};
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 
-use super::helper;
-use super::settings::{Settings, State};
+use super::super::utils;
+use super::super::settings::{Settings, State};
 
 use serde_json::json;
 
-pub struct ControlRuntime {
+pub struct ClashRuntime {
     settings: Arc<RwLock<Settings>>,
     state: Arc<RwLock<State>>,
     clash_state: Arc<RwLock<Clash>>,
@@ -62,11 +61,7 @@ impl std::fmt::Display for RunningStatus {
     }
 }
 
-// pub struct DownloadStatus {
-
-// }
-
-impl ControlRuntime {
+impl ClashRuntime {
     pub fn new() -> Self {
         let new_state = State::new();
         let settings_p = settings_path(&new_state.home);
@@ -77,7 +72,7 @@ impl ControlRuntime {
         let running_status = RunningStatus::None;
         Self {
             settings: Arc::new(RwLock::new(
-                super::settings::Settings::open(settings_p)
+                super::super::settings::Settings::open(settings_p)
                     .unwrap_or_default()
                     .into(),
             )),
@@ -120,11 +115,11 @@ impl ControlRuntime {
         //health check
         //当程序上次异常退出时的处理
         if let Ok(mut v) = runtime_settings.write() {
-            if !helper::is_clash_running() && v.enable {
+            if !utils::is_clash_running() && v.enable {
                 v.enable = false;
                 drop(v);
                 //刷新网卡
-                match helper::reset_system_network() {
+                match utils::reset_system_network() {
                     Ok(_) => {}
                     Err(e) => {
                         log::error!("runtime failed to acquire settings write lock: {}", e);
@@ -191,14 +186,17 @@ fn get_current_working_dir() -> std::io::Result<std::path::PathBuf> {
 }
 
 fn get_decky_data_dir() -> std::io::Result<std::path::PathBuf> {
-    let data_dir = get_current_working_dir().unwrap().join("../../data/tomoon");
+    let data_dir = get_current_working_dir()?
+        .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
+        .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
+        .join("data/tomoon");
     Ok(data_dir)
 }
 
 pub struct Clash {
     pub path: std::path::PathBuf,
     pub config: std::path::PathBuf,
-    pub instence: Option<Child>,
+    pub instance: Option<Child>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -208,7 +206,6 @@ pub enum ClashErrorKind {
     NetworkError,
     InnerError,
     Default,
-    CpDbError,
 }
 
 #[derive(Debug)]
@@ -245,7 +242,7 @@ impl Default for Clash {
             config: get_current_working_dir()
                 .unwrap()
                 .join("bin/core/config.yaml"),
-            instence: None,
+            instance: None,
         }
     }
 }
@@ -262,63 +259,11 @@ impl Clash {
     ) -> Result<(), ClashError> {
         // decky 插件数据目录
         let decky_data_dir = get_decky_data_dir().unwrap();
-        let new_country_db_path = get_current_working_dir()
-            .unwrap()
-            .join("bin/core/country.mmdb");
-        let new_asn_db_path = get_current_working_dir().unwrap().join("bin/core/asn.mmdb");
-        let new_geosite_path = get_current_working_dir()
-            .unwrap()
-            .join("bin/core/geosite.dat");
-        let country_db_path = decky_data_dir.join("country.mmdb");
-        let asn_db_path = decky_data_dir.join("asn.mmdb");
-        let geosite_path = decky_data_dir.join("geosite.dat");
+        let clash_dir = get_current_working_dir().unwrap().join("bin/core");
 
         // 检查 decky_data_dir 是否存在，不存在则创建
         if !decky_data_dir.exists() {
             fs::create_dir_all(&decky_data_dir).unwrap();
-        }
-
-        // 检查数据库文件是否存在，不存在则复制
-        if !PathBuf::from(country_db_path.clone()).is_file() {
-            match fs::copy(new_country_db_path.clone(), country_db_path.clone()) {
-                Ok(_) => {
-                    log::info!("Copy country.mmdb to decky data dir")
-                }
-                Err(e) => {
-                    return Err(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::CpDbError,
-                    });
-                }
-            }
-        }
-
-        if !PathBuf::from(asn_db_path.clone()).is_file() {
-            match fs::copy(new_asn_db_path.clone(), asn_db_path.clone()) {
-                Ok(_) => {
-                    log::info!("Copy asn.mmdb to decky data dir")
-                }
-                Err(e) => {
-                    return Err(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::CpDbError,
-                    });
-                }
-            }
-        }
-
-        if !PathBuf::from(geosite_path.clone()).is_file() {
-            match fs::copy(new_geosite_path.clone(), geosite_path.clone()) {
-                Ok(_) => {
-                    log::info!("Copy geosite.dat to decky data dir")
-                }
-                Err(e) => {
-                    return Err(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::CpDbError,
-                    });
-                }
-            }
         }
 
         self.update_config_path(config_path);
@@ -349,33 +294,36 @@ impl Clash {
 
         let clash = Command::new(self.path.clone())
             .arg("-d")
-            .arg(decky_data_dir)
+            .arg(clash_dir)
             .arg("-f")
             .arg(run_config)
             .stdout(outputs)
             .stderr(errors)
             .spawn();
         let clash: Result<Child, ClashError> = match clash {
-            Ok(x) => Ok(x),
+            Ok(x) => {
+                let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+                Ok(x)
+            },
             Err(e) => {
                 log::error!("run Clash failed: {}", e);
                 //TODO: 开启 Clash 的错误处理
                 return Err(ClashError::new());
             }
         };
-        self.instence = Some(clash.unwrap());
+        self.instance = Some(clash.unwrap());
         Ok(())
     }
 
     pub fn stop(&mut self) -> Result<(), Box<dyn error::Error>> {
-        let instance = self.instence.as_mut();
+        let instance = self.instance.as_mut();
         match instance {
             Some(x) => {
                 x.kill()?;
                 x.wait()?;
 
                 //直接重置网络
-                helper::reset_system_network()?;
+                utils::reset_system_network()?;
             }
             None => {
                 //Not launch Clash yet...

@@ -6,12 +6,12 @@ use std::{collections::HashMap, fs, path::PathBuf, sync::Mutex};
 use content_disposition;
 
 use crate::{
-    control::{ClashError, ClashErrorKind, EnhancedMode},
-    helper,
+    services::clash::{ClashError, ClashErrorKind, EnhancedMode},
+    utils,
     settings::State,
 };
 
-pub struct Runtime(pub *const crate::control::ControlRuntime);
+pub struct Runtime(pub *const crate::services::clash::ClashRuntime);
 unsafe impl Send for Runtime {}
 
 pub struct AppState {
@@ -567,7 +567,7 @@ pub async fn download_sub(
     let path: PathBuf = home.join(".config/tomoon/subs/");
 
     //是一个本地文件
-    if let Some(local_file) = helper::get_file_path(url.clone()) {
+    if let Some(local_file) = utils::get_file_path(url.clone()) {
         let local_file = PathBuf::from(local_file);
         let filename = (|| -> Result<String, ()> {
             // 如果文件名可被读取则采用
@@ -601,7 +601,7 @@ pub async fn download_sub(
                     }));
                 }
             };
-            if !helper::check_yaml(&file_content) {
+            if !utils::check_yaml(&file_content) {
                 log::error!("The downloaded subscription is not a legal profile.");
                 return Err(actix_web::Error::from(ClashError {
                     message: "The downloaded subscription is not a legal profile.".to_string(),
@@ -699,7 +699,7 @@ pub async fn download_sub(
             Ok(x) => {
                 let response = x.as_str().unwrap();
 
-                if !helper::check_yaml(&String::from(response)) {
+                if !utils::check_yaml(&String::from(response)) {
                     log::error!("The downloaded subscription is not a legal profile.");
                     return Err(actix_web::Error::from(ClashError {
                         message: "The downloaded subscription is not a legal profile.".to_string(),

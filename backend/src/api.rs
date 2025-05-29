@@ -1,12 +1,12 @@
 use std::{fs, path::PathBuf, thread};
 
 use crate::{
-    control::{DownloadStatus, RunningStatus},
-    helper,
+    services::clash::{DownloadStatus, RunningStatus},
+    utils,
     settings::{State, Subscription},
 };
 
-use super::control::ControlRuntime;
+use super::services::clash::ClashRuntime;
 
 use rand::{distributions::Alphanumeric, Rng};
 use usdpl_back::core::serdes::Primitive;
@@ -14,7 +14,7 @@ use usdpl_back::core::serdes::Primitive;
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const NAME: &'static str = env!("CARGO_PKG_NAME");
 
-pub fn get_clash_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_clash_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_settings = runtime.settings_clone();
     move |_| {
         let mut lock = match runtime_settings.write() {
@@ -24,7 +24,7 @@ pub fn get_clash_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> 
                 return vec![];
             }
         };
-        let is_clash_running = helper::is_clash_running();
+        let is_clash_running = utils::is_clash_running();
         if !is_clash_running && lock.enable
         //Clash 不在后台但设置里却表示打开
         {
@@ -40,7 +40,7 @@ pub fn get_clash_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> 
     }
 }
 
-pub fn set_clash_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn set_clash_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_settings = runtime.settings_clone();
     let runtime_state = runtime.state_clone();
     let clash = runtime.clash_state_clone();
@@ -134,7 +134,7 @@ pub fn set_clash_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> 
 
 pub fn reset_network() -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     |_| {
-        match helper::reset_system_network() {
+        match utils::reset_system_network() {
             Ok(_) => (),
             Err(e) => {
                 log::error!("Error occured while reset_network() : {}", e);
@@ -146,7 +146,7 @@ pub fn reset_network() -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     }
 }
 
-pub fn download_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn download_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let download_status = runtime.downlaod_status_clone();
     let runtime_state = runtime.state_clone();
     let runtime_setting = runtime.settings_clone();
@@ -184,7 +184,7 @@ pub fn download_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<
                             }
                         };
                         //是一个本地文件
-                        if let Some(local_file) = helper::get_file_path(url.clone()) {
+                        if let Some(local_file) = utils::get_file_path(url.clone()) {
                             let local_file = PathBuf::from(local_file);
                             if local_file.exists() {
                                 let file_content = match fs::read_to_string(local_file) {
@@ -196,7 +196,7 @@ pub fn download_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<
                                         return;
                                     }
                                 };
-                                if !helper::check_yaml(&file_content) {
+                                if !utils::check_yaml(&file_content) {
                                     log::error!(
                                         "The downloaded subscription is not a legal profile."
                                     );
@@ -267,7 +267,7 @@ pub fn download_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<
                             {
                                 Ok(x) => {
                                     let response = x.as_str().unwrap();
-                                    if !helper::check_yaml(&String::from(response)) {
+                                    if !utils::check_yaml(&String::from(response)) {
                                         log::error!(
                                             "The downloaded subscription is not a legal profile."
                                         );
@@ -342,7 +342,7 @@ pub fn download_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<
     }
 }
 
-pub fn get_download_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_download_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let download_status = runtime.downlaod_status_clone();
     move |_| {
         match download_status.read() {
@@ -358,7 +358,7 @@ pub fn get_download_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) 
     }
 }
 
-pub fn get_running_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_running_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let running_status = runtime.running_status_clone();
     move |_| {
         match running_status.read() {
@@ -374,7 +374,7 @@ pub fn get_running_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -
     }
 }
 
-pub fn get_sub_list(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_sub_list(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
     move |_| {
         match runtime_setting.read() {
@@ -403,7 +403,7 @@ pub fn get_sub_list(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<
 }
 
 // get_current_sub 获取当前订阅
-pub fn get_current_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_current_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
     move |_| {
         match runtime_setting.read() {
@@ -418,7 +418,7 @@ pub fn get_current_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> V
     }
 }
 
-pub fn delete_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn delete_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
     let runtime_state = runtime.state_clone();
     move |params| {
@@ -459,7 +459,7 @@ pub fn delete_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Pr
     }
 }
 
-pub fn set_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn set_sub(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_clash = runtime.clash_state_clone();
     let runtime_state = runtime.state_clone();
     let runtime_setting = runtime.settings_clone();
@@ -500,7 +500,7 @@ pub fn set_sub(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primi
     }
 }
 
-pub fn update_subs(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn update_subs(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_update_status = runtime.update_status_clone();
     let runtime_setting = runtime.settings_clone();
     move |_| {
@@ -514,7 +514,7 @@ pub fn update_subs(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<P
                 thread::spawn(move || {
                     for i in subs {
                         //是一个本地文件
-                        if helper::get_file_path(i.url.clone()).is_some() {
+                        if utils::get_file_path(i.url.clone()).is_some() {
                             continue;
                         }
                         thread::spawn(move || {
@@ -537,7 +537,7 @@ pub fn update_subs(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<P
                                             return;
                                         }
                                     };
-                                    if !helper::check_yaml(&response.to_string()) {
+                                    if !utils::check_yaml(&response.to_string()) {
                                         log::error!(
                                             "The downloaded subscription is not a legal profile."
                                         );
@@ -578,7 +578,7 @@ pub fn update_subs(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<P
     }
 }
 
-pub fn get_update_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn get_update_status(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let update_status = runtime.update_status_clone();
     move |_| {
         match update_status.read() {
@@ -594,14 +594,14 @@ pub fn get_update_status(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) ->
     }
 }
 
-pub fn create_debug_log(runtime: &ControlRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn create_debug_log(runtime: &ClashRuntime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     //let update_status = runtime.update_status_clone();
     let home = match runtime.state_clone().read() {
         Ok(state) => state.home.clone(),
         Err(_) => State::default().home,
     };
     move |_| {
-        let running_status = format!("Clash status : {}\n", helper::is_clash_running());
+        let running_status = format!("Clash status : {}\n", utils::is_clash_running());
         let tomoon_config = match fs::read_to_string(home.join(".config/tomoon/tomoon.json")) {
             Ok(x) => x,
             Err(e) => {

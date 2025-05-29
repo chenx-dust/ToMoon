@@ -1,7 +1,7 @@
 mod api;
-mod control;
+mod services;
 mod external_web;
-mod helper;
+mod utils;
 mod settings;
 mod test;
 
@@ -10,11 +10,11 @@ use std::{collections::HashMap, sync::Mutex, thread};
 use actix_cors::Cors;
 use actix_files as fs;
 use actix_web::{middleware, web, App, HttpServer};
-use simplelog::{LevelFilter, WriteLogger};
+use simplelog::{ColorChoice, CombinedLogger, LevelFilter, TermLogger, TerminalMode, WriteLogger};
 use usdpl_back::Instance;
 
 use crate::{
-    control::ControlRuntime,
+    services::clash::ClashRuntime,
     external_web::Runtime,
 };
 
@@ -23,28 +23,52 @@ const WEB_PORT: u16 = 55556;
 
 #[actix_web::main]
 async fn main() -> Result<(), std::io::Error> {
-    WriteLogger::init(
-        #[cfg(debug_assertions)]
-        {
-            LevelFilter::Debug
-        },
-        #[cfg(not(debug_assertions))]
-        {
-            LevelFilter::Info
-        },
-        Default::default(),
-        std::fs::File::create("/tmp/tomoon.log").unwrap(),
-    )
-    .unwrap();
+    // WriteLogger::init(
+    //     #[cfg(debug_assertions)]
+    //     {
+    //         LevelFilter::Debug
+    //     },
+    //     #[cfg(not(debug_assertions))]
+    //     {
+    //         LevelFilter::Info
+    //     },
+    //     Default::default(),
+    //     std::fs::File::create("/tmp/tomoon.log").unwrap(),
+    // )
+    // .unwrap();
+    if cfg!(debug_assertions) {
+        CombinedLogger::init(
+            vec![
+                TermLogger::new(
+                    LevelFilter::Info,
+                    Default::default(),
+                    TerminalMode::Mixed,
+                    ColorChoice::Auto,
+                ),
+                WriteLogger::new(
+                    LevelFilter::Info,
+                    Default::default(),
+                    std::fs::File::create("/tmp/tomoon.log").unwrap(),
+                ),
+            ],
+        ).unwrap();
+    } else {
+        WriteLogger::init(
+            LevelFilter::Info,
+            Default::default(),
+            std::fs::File::create("/tmp/tomoon.log").unwrap(),
+        )
+        .unwrap();
+    }
 
     log::info!("Starting back-end ({} v{})", api::NAME, api::VERSION);
     log::info!("{}", std::env::current_dir().unwrap().to_str().unwrap());
     println!("Starting back-end ({} v{})", api::NAME, api::VERSION);
 
-    let runtime: ControlRuntime = control::ControlRuntime::new();
+    let runtime: ClashRuntime = services::clash::ClashRuntime::new();
     runtime.run();
 
-    let runtime_pr = Runtime(&runtime as *const ControlRuntime);
+    let runtime_pr = Runtime(&runtime as *const ClashRuntime);
 
     thread::spawn(move || {
         Instance::new(PORT)
@@ -66,7 +90,7 @@ async fn main() -> Result<(), std::io::Error> {
     });
 
     // 启动一个 tokio 任务来运行 subconverter
-    let subconverter_path = helper::get_current_working_dir()
+    let subconverter_path = utils::get_current_working_dir()
         .unwrap()
         .join("bin/subconverter");
     tokio::spawn(async move {
