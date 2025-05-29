@@ -1,17 +1,15 @@
+#[cfg(test)]
 mod tests {
 
-    use crate::{control, helper};
+    use crate::helper;
     use regex::Regex;
-    use serde_yaml::{Mapping, Number, Value};
+    use serde_yaml::{Mapping, Value};
     use std::{
         fs,
         path::PathBuf,
-        process::{Command, Stdio},
-        thread,
-        time::Duration,
     };
 
-    use sysinfo::{Pid, ProcessExt, System, SystemExt};
+    use sysinfo::{ProcessExt, System, SystemExt};
 
     #[test]
     fn check_systemd_resolved() {}
@@ -83,14 +81,6 @@ mod tests {
         }
     }
 
-    fn fun_name(url: String) {
-        let r = Regex::new(r"^file://").unwrap();
-        if let Some(x) = r.find(url.clone().as_str()) {
-            let file_path = url[x.end()..url.len()].to_string();
-            println!("{}", file_path);
-        };
-    }
-
     #[test]
     fn test_privider_path() {
         let test_yaml = "./Rules/IPfake.yaml";
@@ -108,7 +98,7 @@ mod tests {
         let yaml = yaml.as_mapping_mut().unwrap();
         if let Some(x) = yaml.get_mut("rule-providers") {
             let provider = x.as_mapping().unwrap();
-            for (key, value) in provider {
+            for (_, value) in provider {
                 if let Some(url) = value.get("url") {
                     if let Some(path) = value.get("path") {
                         println!("{} {}", path.as_str().unwrap(), url.as_str().unwrap());

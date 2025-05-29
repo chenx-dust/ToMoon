@@ -14,7 +14,7 @@ use simplelog::{LevelFilter, WriteLogger};
 use usdpl_back::Instance;
 
 use crate::{
-    control::{ControlRuntime, RunningStatus},
+    control::ControlRuntime,
     external_web::Runtime,
 };
 

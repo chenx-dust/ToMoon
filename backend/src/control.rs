@@ -1,5 +1,5 @@
 use std::fmt::Display;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::{Arc, RwLock};
 
@@ -213,8 +213,8 @@ pub enum ClashErrorKind {
 
 #[derive(Debug)]
 pub struct ClashError {
-    pub Message: String,
-    pub ErrorKind: ClashErrorKind,
+    pub message: String,
+    pub error_kind: ClashErrorKind,
 }
 
 impl error::Error for ClashError {}
@@ -224,7 +224,7 @@ impl Display for ClashError {
         write!(
             f,
             "Error Kind: {:?}, Error Message: {})",
-            self.ErrorKind, self.Message
+            self.error_kind, self.message
         )
     }
 }
@@ -232,8 +232,8 @@ impl Display for ClashError {
 impl ClashError {
     pub fn new() -> Self {
         Self {
-            Message: "".to_string(),
-            ErrorKind: ClashErrorKind::Default,
+            message: "".to_string(),
+            error_kind: ClashErrorKind::Default,
         }
     }
 }
@@ -286,8 +286,8 @@ impl Clash {
                 }
                 Err(e) => {
                     return Err(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::CpDbError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::CpDbError,
                     });
                 }
             }
@@ -300,8 +300,8 @@ impl Clash {
                 }
                 Err(e) => {
                     return Err(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::CpDbError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::CpDbError,
                     });
                 }
             }
@@ -314,8 +314,8 @@ impl Clash {
                 }
                 Err(e) => {
                     return Err(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::CpDbError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::CpDbError,
                     });
                 }
             }
@@ -333,8 +333,8 @@ impl Clash {
             Ok(_) => (),
             Err(e) => {
                 return Err(ClashError {
-                    Message: e.to_string(),
-                    ErrorKind: ClashErrorKind::ConfigFormatError,
+                    message: e.to_string(),
+                    error_kind: ClashErrorKind::ConfigFormatError,
                 });
             }
         }
@@ -416,8 +416,8 @@ impl Clash {
             Err(e) => {
                 log::error!("Failed to restart Clash core: {}", e);
                 return Err(ClashError {
-                    Message: e.to_string(),
-                    ErrorKind: ClashErrorKind::InnerError,
+                    message: e.to_string(),
+                    error_kind: ClashErrorKind::InnerError,
                 });
             }
         };
@@ -452,8 +452,8 @@ impl Clash {
             Err(e) => {
                 log::error!("Failed to restart Clash core: {}", e);
                 return Err(ClashError {
-                    Message: e.to_string(),
-                    ErrorKind: ClashErrorKind::InnerError,
+                    message: e.to_string(),
+                    error_kind: ClashErrorKind::InnerError,
                 });
             }
         };

@@ -109,7 +109,7 @@ pub struct GetLocalIpAddressResponse {
 
 impl actix_web::ResponseError for ClashError {
     fn status_code(&self) -> actix_web::http::StatusCode {
-        if self.ErrorKind == ClashErrorKind::ConfigNotFound {
+        if self.error_kind == ClashErrorKind::ConfigNotFound {
             actix_web::http::StatusCode::NOT_FOUND
         } else {
             actix_web::http::StatusCode::INTERNAL_SERVER_ERROR
@@ -123,7 +123,7 @@ impl actix_web::ResponseError for ClashError {
             actix_web::http::header::CONTENT_TYPE,
             actix_web::http::header::HeaderValue::from_str(mime).unwrap(),
         );
-        res.set_body(BoxBody::new(self.Message.clone()))
+        res.set_body(BoxBody::new(self.message.clone()))
     }
 }
 
@@ -148,8 +148,8 @@ pub async fn skip_proxy(
                 Err(e) => {
                     log::error!("set_enable failed to acquire state write lock: {}", e);
                     return Err(actix_web::Error::from(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::InnerError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::InnerError,
                     }));
                 }
             };
@@ -159,8 +159,8 @@ pub async fn skip_proxy(
             log::error!("Failed while toggle skip Steam proxy.");
             log::error!("Error Message:{}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::ConfigNotFound,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::ConfigNotFound,
             }));
         }
     }
@@ -192,8 +192,8 @@ pub async fn override_dns(
                 Err(e) => {
                     log::error!("override_dns failed to acquire state write lock: {}", e);
                     return Err(actix_web::Error::from(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::InnerError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::InnerError,
                     }));
                 }
             };
@@ -203,8 +203,8 @@ pub async fn override_dns(
             log::error!("Failed while toggle override dns.");
             log::error!("Error Message:{}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::ConfigNotFound,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::ConfigNotFound,
             }));
         }
     }
@@ -240,8 +240,8 @@ pub async fn allow_remote_access(
                         e
                     );
                     return Err(actix_web::Error::from(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::InnerError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::InnerError,
                     }));
                 }
             };
@@ -251,8 +251,8 @@ pub async fn allow_remote_access(
             log::error!("Failed while toggle allow_remote_access.");
             log::error!("Error Message:{}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::ConfigNotFound,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::ConfigNotFound,
             }));
         }
     }
@@ -284,8 +284,8 @@ pub async fn enhanced_mode(
                 Err(e) => {
                     log::error!("enhanced_mode failed to acquire state write lock: {}", e);
                     return Err(actix_web::Error::from(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::InnerError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::InnerError,
                     }));
                 }
             };
@@ -295,8 +295,8 @@ pub async fn enhanced_mode(
             log::error!("Failed while toggle enhanced mode.");
             log::error!("Error Message:{}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::ConfigNotFound,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::ConfigNotFound,
             }));
         }
     }
@@ -330,8 +330,8 @@ pub async fn set_dashboard(
                 Err(e) => {
                     log::error!("set_dashboard failed to acquire state write lock: {}", e);
                     return Err(actix_web::Error::from(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::InnerError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::InnerError,
                     }));
                 }
             };
@@ -341,8 +341,8 @@ pub async fn set_dashboard(
             log::error!("Failed while set dashboard.");
             log::error!("Error Message:{}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::ConfigNotFound,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::ConfigNotFound,
             }));
         }
     }
@@ -368,8 +368,8 @@ pub async fn restart_clash(state: web::Data<AppState>) -> Result<HttpResponse> {
         Err(e) => {
             log::error!("read clash_state failed to acquire state write lock: {}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::InnerError,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::InnerError,
             }));
         }
     };
@@ -412,8 +412,8 @@ pub async fn restart_clash(state: web::Data<AppState>) -> Result<HttpResponse> {
             log::error!("Failed while restart clash.");
             log::error!("Error Message:{}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::InnerError,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::InnerError,
             }));
         }
     }
@@ -440,8 +440,8 @@ pub async fn reload_clash_config(state: web::Data<AppState>) -> Result<HttpRespo
         Err(e) => {
             log::error!("read clash_state failed: {}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::InnerError,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::InnerError,
             }));
         }
     };
@@ -451,8 +451,8 @@ pub async fn reload_clash_config(state: web::Data<AppState>) -> Result<HttpRespo
         Err(e) => {
             log::error!("read runtime_settings failed: {}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::InnerError,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::InnerError,
             }));
         }
     };
@@ -469,8 +469,8 @@ pub async fn reload_clash_config(state: web::Data<AppState>) -> Result<HttpRespo
             log::error!("Failed while change clash config.");
             log::error!("Error Message:{}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::InnerError,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::InnerError,
             }));
         }
     }
@@ -481,8 +481,8 @@ pub async fn reload_clash_config(state: web::Data<AppState>) -> Result<HttpRespo
             log::error!("Failed while reload clash config.");
             log::error!("Error Message:{}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::InnerError,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::InnerError,
             }));
         }
     }
@@ -509,8 +509,8 @@ pub async fn get_config(state: web::Data<AppState>) -> Result<HttpResponse> {
         Err(e) => {
             log::error!("read clash_state failed: {}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::InnerError,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::InnerError,
             }));
         }
     };
@@ -537,8 +537,8 @@ pub async fn get_config(state: web::Data<AppState>) -> Result<HttpResponse> {
             log::error!("Failed while geting skip Steam proxy.");
             log::error!("Error Message:{}", e);
             return Err(actix_web::Error::from(ClashError {
-                Message: e.to_string(),
-                ErrorKind: ClashErrorKind::ConfigNotFound,
+                message: e.to_string(),
+                error_kind: ClashErrorKind::ConfigNotFound,
             }));
         }
     };
@@ -596,16 +596,16 @@ pub async fn download_sub(
                     log::error!("Failed while creating sub dir.");
                     log::error!("Error Message:{}", e);
                     return Err(actix_web::Error::from(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::ConfigNotFound,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::ConfigNotFound,
                     }));
                 }
             };
             if !helper::check_yaml(&file_content) {
                 log::error!("The downloaded subscription is not a legal profile.");
                 return Err(actix_web::Error::from(ClashError {
-                    Message: "The downloaded subscription is not a legal profile.".to_string(),
-                    ErrorKind: ClashErrorKind::ConfigFormatError,
+                    message: "The downloaded subscription is not a legal profile.".to_string(),
+                    error_kind: ClashErrorKind::ConfigFormatError,
                 }));
             }
             //保存订阅
@@ -615,8 +615,8 @@ pub async fn download_sub(
                     log::error!("Failed while creating sub dir.");
                     log::error!("Error Message:{}", e);
                     return Err(actix_web::Error::from(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::InnerError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::InnerError,
                     }));
                 }
             }
@@ -625,8 +625,8 @@ pub async fn download_sub(
                 log::error!("Failed while saving sub, path: {}", path);
                 log::error!("Error Message:{}", e);
                 return Err(actix_web::Error::from(ClashError {
-                    Message: e.to_string(),
-                    ErrorKind: ClashErrorKind::InnerError,
+                    message: e.to_string(),
+                    error_kind: ClashErrorKind::InnerError,
                 }));
             }
             //修改下载状态
@@ -643,8 +643,8 @@ pub async fn download_sub(
                         Err(e) => {
                             log::error!("set_enable failed to acquire state write lock: {}", e);
                             return Err(actix_web::Error::from(ClashError {
-                                Message: e.to_string(),
-                                ErrorKind: ClashErrorKind::InnerError,
+                                message: e.to_string(),
+                                error_kind: ClashErrorKind::InnerError,
                             }));
                         }
                     };
@@ -656,16 +656,16 @@ pub async fn download_sub(
                         e
                     );
                     return Err(actix_web::Error::from(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::InnerError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::InnerError,
                     }));
                 }
             };
         } else {
             log::error!("Cannt found file {}", local_file.to_str().unwrap());
             return Err(actix_web::Error::from(ClashError {
-                Message: format!("Cannt found file {}", local_file.to_str().unwrap()),
-                ErrorKind: ClashErrorKind::InnerError,
+                message: format!("Cannt found file {}", local_file.to_str().unwrap()),
+                error_kind: ClashErrorKind::InnerError,
             }));
         }
         // 是一个链接
@@ -702,8 +702,8 @@ pub async fn download_sub(
                 if !helper::check_yaml(&String::from(response)) {
                     log::error!("The downloaded subscription is not a legal profile.");
                     return Err(actix_web::Error::from(ClashError {
-                        Message: "The downloaded subscription is not a legal profile.".to_string(),
-                        ErrorKind: ClashErrorKind::ConfigFormatError,
+                        message: "The downloaded subscription is not a legal profile.".to_string(),
+                        error_kind: ClashErrorKind::ConfigFormatError,
                     }));
                 }
                 let filename = x.headers.get("content-disposition")
@@ -742,8 +742,8 @@ pub async fn download_sub(
                     if filepath.exists() {
                         log::error!("Failed while saving sub, cannot find a new name.");
                         return Err(actix_web::Error::from(ClashError {
-                            Message: "The file already exists.".to_string(),
-                            ErrorKind: ClashErrorKind::InnerError,
+                            message: "The file already exists.".to_string(),
+                            error_kind: ClashErrorKind::InnerError,
                         }));
                     }
                 }
@@ -753,8 +753,8 @@ pub async fn download_sub(
                         log::error!("Failed while creating sub dir.");
                         log::error!("Error Message:{}", e);
                         return Err(actix_web::Error::from(ClashError {
-                            Message: e.to_string(),
-                            ErrorKind: ClashErrorKind::InnerError,
+                            message: e.to_string(),
+                            error_kind: ClashErrorKind::InnerError,
                         }));
                     }
                 }
@@ -764,8 +764,8 @@ pub async fn download_sub(
                     log::error!("Failed while saving sub.");
                     log::error!("Error Message:{}", e);
                     return Err(actix_web::Error::from(ClashError {
-                        Message: e.to_string(),
-                        ErrorKind: ClashErrorKind::InnerError,
+                        message: e.to_string(),
+                        error_kind: ClashErrorKind::InnerError,
                     }));
                 }
                 //下载成功
@@ -781,8 +781,8 @@ pub async fn download_sub(
                             Err(e) => {
                                 log::error!("set_enable failed to acquire state write lock: {}", e);
                                 return Err(actix_web::Error::from(ClashError {
-                                    Message: e.to_string(),
-                                    ErrorKind: ClashErrorKind::InnerError,
+                                    message: e.to_string(),
+                                    error_kind: ClashErrorKind::InnerError,
                                 }));
                             }
                         };
@@ -794,8 +794,8 @@ pub async fn download_sub(
                             e
                         );
                         return Err(actix_web::Error::from(ClashError {
-                            Message: e.to_string(),
-                            ErrorKind: ClashErrorKind::InnerError,
+                            message: e.to_string(),
+                            error_kind: ClashErrorKind::InnerError,
                         }));
                     }
                 }
@@ -804,8 +804,8 @@ pub async fn download_sub(
                 log::error!("Failed while downloading sub.");
                 log::error!("Error Message:{}", e);
                 return Err(actix_web::Error::from(ClashError {
-                    Message: e.to_string(),
-                    ErrorKind: ClashErrorKind::NetworkError,
+                    message: e.to_string(),
+                    error_kind: ClashErrorKind::NetworkError,
                 }));
             }
         };
