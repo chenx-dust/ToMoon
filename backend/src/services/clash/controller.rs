@@ -143,9 +143,6 @@ impl Controller {
             Some(x) => {
                 x.kill()?;
                 x.wait()?;
-
-                //直接重置网络
-                utils::reset_system_network()?;
             }
             None => {
                 //Not launch Clash yet...

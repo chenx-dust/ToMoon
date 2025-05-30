@@ -6,9 +6,7 @@ use std::{collections::HashMap, fs, path::PathBuf, sync::Mutex};
 use content_disposition;
 
 use crate::{
-    services::clash::controller::{ClashError, ClashErrorKind, EnhancedMode},
-    utils,
-    settings::State,
+    services::clash::controller::{ClashError, ClashErrorKind, EnhancedMode}, subscribtions, utils
 };
 
 pub struct RuntimePtr(pub *const crate::services::clash::runtime::Runtime);
@@ -134,26 +132,13 @@ pub async fn skip_proxy(
     let skip_proxy = params.skip_proxy.clone();
     let runtime = state.runtime.lock().unwrap();
     let runtime_settings;
-    let runtime_state;
     unsafe {
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
-        runtime_state = runtime.state_clone();
     }
     match runtime_settings.write() {
         Ok(mut x) => {
             x.skip_proxy = skip_proxy;
-            let mut state = match runtime_state.write() {
-                Ok(x) => x,
-                Err(e) => {
-                    log::error!("set_enable failed to acquire state write lock: {}", e);
-                    return Err(actix_web::Error::from(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::InnerError,
-                    }));
-                }
-            };
-            state.dirty = true;
         }
         Err(e) => {
             log::error!("Failed while toggle skip Steam proxy.");
@@ -178,26 +163,13 @@ pub async fn override_dns(
     let override_dns = params.override_dns.clone();
     let runtime = state.runtime.lock().unwrap();
     let runtime_settings;
-    let runtime_state;
     unsafe {
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
-        runtime_state = runtime.state_clone();
     }
     match runtime_settings.write() {
         Ok(mut x) => {
             x.override_dns = override_dns;
-            let mut state = match runtime_state.write() {
-                Ok(x) => x,
-                Err(e) => {
-                    log::error!("override_dns failed to acquire state write lock: {}", e);
-                    return Err(actix_web::Error::from(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::InnerError,
-                    }));
-                }
-            };
-            state.dirty = true;
         }
         Err(e) => {
             log::error!("Failed while toggle override dns.");
@@ -223,29 +195,13 @@ pub async fn allow_remote_access(
     let allow_remote_access = params.allow_remote_access.clone();
     let runtime = state.runtime.lock().unwrap();
     let runtime_settings;
-    let runtime_state;
     unsafe {
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
-        runtime_state = runtime.state_clone();
     }
     match runtime_settings.write() {
         Ok(mut x) => {
             x.allow_remote_access = allow_remote_access;
-            let mut state = match runtime_state.write() {
-                Ok(x) => x,
-                Err(e) => {
-                    log::error!(
-                        "allow_remote_access failed to acquire state write lock: {}",
-                        e
-                    );
-                    return Err(actix_web::Error::from(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::InnerError,
-                    }));
-                }
-            };
-            state.dirty = true;
         }
         Err(e) => {
             log::error!("Failed while toggle allow_remote_access.");
@@ -270,26 +226,13 @@ pub async fn enhanced_mode(
     let enhanced_mode = params.enhanced_mode.clone();
     let runtime = state.runtime.lock().unwrap();
     let runtime_settings;
-    let runtime_state;
     unsafe {
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
-        runtime_state = runtime.state_clone();
     }
     match runtime_settings.write() {
         Ok(mut x) => {
             x.enhanced_mode = enhanced_mode;
-            let mut state = match runtime_state.write() {
-                Ok(x) => x,
-                Err(e) => {
-                    log::error!("enhanced_mode failed to acquire state write lock: {}", e);
-                    return Err(actix_web::Error::from(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::InnerError,
-                    }));
-                }
-            };
-            state.dirty = true;
         }
         Err(e) => {
             log::error!("Failed while toggle enhanced mode.");
@@ -315,27 +258,14 @@ pub async fn set_dashboard(
     let dashboard = params.dashboard.clone();
     let runtime = state.runtime.lock().unwrap();
     let runtime_settings;
-    let runtime_state;
     unsafe {
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
-        runtime_state = runtime.state_clone();
     }
 
     match runtime_settings.write() {
         Ok(mut x) => {
             x.dashboard = dashboard;
-            let mut state = match runtime_state.write() {
-                Ok(x) => x,
-                Err(e) => {
-                    log::error!("set_dashboard failed to acquire state write lock: {}", e);
-                    return Err(actix_web::Error::from(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::InnerError,
-                    }));
-                }
-            };
-            state.dirty = true;
         }
         Err(e) => {
             log::error!("Failed while set dashboard.");
@@ -548,268 +478,18 @@ pub async fn download_sub(
     state: web::Data<AppState>,
     params: web::Form<GenLinkParams>,
 ) -> Result<HttpResponse> {
-    let mut url = params.link.clone();
+    let url = params.link.clone();
     let subconv = params.subconv.clone();
     let runtime = state.runtime.lock().unwrap();
 
     let runtime_settings;
-    let runtime_state;
     unsafe {
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
-        runtime_state = runtime.state_clone();
     }
 
-    let home = match runtime_state.read() {
-        Ok(state) => state.home.clone(),
-        Err(_) => State::default().home,
-    };
-    let path: PathBuf = home.join(".config/tomoon/subs/");
+    subscribtions::download_sub(url, subconv, runtime_settings)?;
 
-    //是一个本地文件
-    if let Some(local_file) = utils::get_file_path(url.clone()) {
-        let local_file = PathBuf::from(local_file);
-        let filename = (|| -> Result<String, ()> {
-            // 如果文件名可被读取则采用
-            let mut filename = String::from(local_file.file_name().ok_or(())?.to_str().ok_or(())?);
-            if !filename.to_lowercase().ends_with(".yaml")
-                && !filename.to_lowercase().ends_with(".yml")
-            {
-                filename += ".yaml";
-            }
-            Ok(filename)
-        })()
-        .unwrap_or({
-            log::warn!("The subscription does not have a proper file name.");
-            // 否则采用随机名字
-            rand::thread_rng()
-                .sample_iter(&Alphanumeric)
-                .take(5)
-                .map(char::from)
-                .collect::<String>()
-                + ".yaml"
-        });
-        if local_file.exists() {
-            let file_content = match fs::read_to_string(local_file) {
-                Ok(x) => x,
-                Err(e) => {
-                    log::error!("Failed while creating sub dir.");
-                    log::error!("Error Message:{}", e);
-                    return Err(actix_web::Error::from(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::ConfigNotFound,
-                    }));
-                }
-            };
-            if !utils::check_yaml(&file_content) {
-                log::error!("The downloaded subscription is not a legal profile.");
-                return Err(actix_web::Error::from(ClashError {
-                    message: "The downloaded subscription is not a legal profile.".to_string(),
-                    error_kind: ClashErrorKind::ConfigFormatError,
-                }));
-            }
-            //保存订阅
-            let path = path.join(filename);
-            if let Some(parent) = path.parent() {
-                if let Err(e) = std::fs::create_dir_all(parent) {
-                    log::error!("Failed while creating sub dir.");
-                    log::error!("Error Message:{}", e);
-                    return Err(actix_web::Error::from(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::InnerError,
-                    }));
-                }
-            }
-            let path = path.to_str().unwrap();
-            if let Err(e) = fs::write(path, file_content) {
-                log::error!("Failed while saving sub, path: {}", path);
-                log::error!("Error Message:{}", e);
-                return Err(actix_web::Error::from(ClashError {
-                    message: e.to_string(),
-                    error_kind: ClashErrorKind::InnerError,
-                }));
-            }
-            //修改下载状态
-            log::info!("Download profile successfully.");
-            //存入设置
-            match runtime_settings.write() {
-                Ok(mut x) => {
-                    x.subscriptions.push(crate::settings::Subscription::new(
-                        path.to_string(),
-                        url.clone(),
-                    ));
-                    let mut state = match runtime_state.write() {
-                        Ok(x) => x,
-                        Err(e) => {
-                            log::error!("set_enable failed to acquire state write lock: {}", e);
-                            return Err(actix_web::Error::from(ClashError {
-                                message: e.to_string(),
-                                error_kind: ClashErrorKind::InnerError,
-                            }));
-                        }
-                    };
-                    state.dirty = true;
-                }
-                Err(e) => {
-                    log::error!(
-                        "download_sub() faild to acquire runtime_setting write {}",
-                        e
-                    );
-                    return Err(actix_web::Error::from(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::InnerError,
-                    }));
-                }
-            };
-        } else {
-            log::error!("Cannt found file {}", local_file.to_str().unwrap());
-            return Err(actix_web::Error::from(ClashError {
-                message: format!("Cannt found file {}", local_file.to_str().unwrap()),
-                error_kind: ClashErrorKind::InnerError,
-            }));
-        }
-        // 是一个链接
-    } else {
-        if subconv {
-            let base_url = "http://127.0.0.1:25500/sub";
-            let target = "clash";
-            let config = "http://127.0.0.1:55556/ACL4SSR_Online.ini";
-
-            // 对参数进行 URL 编码
-            let encoded_url = urlencoding::encode(url.as_str());
-            let encoded_config = urlencoding::encode(config);
-
-            // 构建请求 URL
-            url = format!(
-                "{}?target={}&url={}&insert=false&config={}&emoji=true&list=false&tfo=false&scv=true&fdn=false&expand=true&sort=false&new_name=true",
-                base_url, target, encoded_url, encoded_config
-            );
-        }
-        match minreq::get(url.clone())
-            .with_header(
-                "User-Agent",
-                format!(
-                    "ToMoon/{} mihomo/1.19.4 clash-verge/2.2.3 Clash/v1.18.0",
-                    env!("CARGO_PKG_VERSION")
-                ),
-            )
-            .with_timeout(120)
-            .send()
-        {
-            Ok(x) => {
-                let response = x.as_str().unwrap();
-
-                if !utils::check_yaml(&String::from(response)) {
-                    log::error!("The downloaded subscription is not a legal profile.");
-                    return Err(actix_web::Error::from(ClashError {
-                        message: "The downloaded subscription is not a legal profile.".to_string(),
-                        error_kind: ClashErrorKind::ConfigFormatError,
-                    }));
-                }
-                let filename = x.headers.get("content-disposition")
-                    .and_then(|header| {
-                        // 尝试从 content-disposition 头部获取文件名
-                        // header.split("filename=").nth(1)
-                        //     .and_then(|s| s.split(';').next())
-                        //     .map(|s| s.trim_matches('"'))
-                        content_disposition::parse_content_disposition(header).filename_full()
-                    })
-                    .filter(|s| !s.is_empty())
-                    .or_else(|| {
-                        // 如果 content-disposition 头部中没有文件名，则尝试从 URL 中获取
-                        log::info!("Failed to get content-disposition, using url instead.");
-                        url.rsplit('/').next()
-                            .and_then(|last_part| last_part.split('?').next()).map(|s| s.to_string())
-                    })
-                    .unwrap_or_else(|| {
-                        // 如果 URL 中没有文件名，则生成一个随机文件名
-                        log::warn!("The downloaded subscription does not have a file name.");
-                        gen_random_name()
-                    });
-                let filename = match filename.to_ascii_lowercase() {
-                    ref lower if lower.ends_with(".yaml") || lower.ends_with(".yml") => filename,
-                    _ => filename + ".yaml",
-                };
-                let mut filepath = path.join(filename.clone());
-                if filepath.exists() {
-                    for i in 1..=128 {
-                        let new_filename = format!("{}_{}.yaml", filename.trim_end_matches(".yaml"), i);
-                        filepath = path.join(new_filename);
-                        if !filepath.exists() {
-                            break;
-                        }
-                    }
-                    if filepath.exists() {
-                        log::error!("Failed while saving sub, cannot find a new name.");
-                        return Err(actix_web::Error::from(ClashError {
-                            message: "The file already exists.".to_string(),
-                            error_kind: ClashErrorKind::InnerError,
-                        }));
-                    }
-                }
-                //保存订阅
-                if let Some(parent) = filepath.parent() {
-                    if let Err(e) = std::fs::create_dir_all(parent) {
-                        log::error!("Failed while creating sub dir.");
-                        log::error!("Error Message:{}", e);
-                        return Err(actix_web::Error::from(ClashError {
-                            message: e.to_string(),
-                            error_kind: ClashErrorKind::InnerError,
-                        }));
-                    }
-                }
-                let path = filepath.to_str().unwrap();
-                log::info!("Writing to path: {}", path);
-                if let Err(e) = fs::write(path, response) {
-                    log::error!("Failed while saving sub.");
-                    log::error!("Error Message:{}", e);
-                    return Err(actix_web::Error::from(ClashError {
-                        message: e.to_string(),
-                        error_kind: ClashErrorKind::InnerError,
-                    }));
-                }
-                //下载成功
-                //修改下载状态
-                log::info!("Download profile successfully.");
-                //存入设置
-                match runtime_settings.write() {
-                    Ok(mut x) => {
-                        x.subscriptions
-                            .push(crate::settings::Subscription::new(path.to_string(), url));
-                        let mut state = match runtime_state.write() {
-                            Ok(x) => x,
-                            Err(e) => {
-                                log::error!("set_enable failed to acquire state write lock: {}", e);
-                                return Err(actix_web::Error::from(ClashError {
-                                    message: e.to_string(),
-                                    error_kind: ClashErrorKind::InnerError,
-                                }));
-                            }
-                        };
-                        state.dirty = true;
-                    }
-                    Err(e) => {
-                        log::error!(
-                            "download_sub() faild to acquire runtime_setting write {}",
-                            e
-                        );
-                        return Err(actix_web::Error::from(ClashError {
-                            message: e.to_string(),
-                            error_kind: ClashErrorKind::InnerError,
-                        }));
-                    }
-                }
-            }
-            Err(e) => {
-                log::error!("Failed while downloading sub.");
-                log::error!("Error Message:{}", e);
-                return Err(actix_web::Error::from(ClashError {
-                    message: e.to_string(),
-                    error_kind: ClashErrorKind::NetworkError,
-                }));
-            }
-        };
-    }
     let r = GenLinkResponse {
         message: "下载成功".to_string(),
         status_code: 200,
@@ -817,13 +497,6 @@ pub async fn download_sub(
     Ok(HttpResponse::Ok().json(r))
 }
 
-fn gen_random_name() -> String {
-    rand::thread_rng()
-        .sample_iter(&Alphanumeric)
-        .take(5)
-        .map(char::from)
-        .collect()
-}
 
 pub async fn get_link(
     state: web::Data<AppState>,

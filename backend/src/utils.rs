@@ -2,42 +2,7 @@ use std::process::Command;
 
 use regex::Regex;
 
-use std::fs;
-
 use sysinfo::{ProcessExt, System, SystemExt};
-
-pub fn reset_system_network() -> Result<(), Box<dyn std::error::Error>> {
-    //读入程序的 DNS
-    let default_config = "[main]\ndns=auto";
-    fs::write("/etc/NetworkManager/conf.d/dns.conf", default_config)?;
-    // 修改 DNS 为可写
-    Command::new("chattr")
-        .arg("-i")
-        .arg("/etc/resolv.conf")
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-    //fs::copy("./resolv.conf.bk", "/etc/resolv.conf")?;
-
-    // 更新 NetworkManager
-    Command::new("nmcli")
-        .arg("general")
-        .arg("reload")
-        .spawn()
-        .unwrap()
-        .wait()
-        .unwrap();
-    // match fs::copy("./resolv.conf.bk", "/etc/resolv.conf") {
-    //     Ok(_) => (),
-    //     Err(e) => {
-    //         log::error!("reset_network() error: {}", e);
-    //         return vec![];
-    //     }
-    // }
-    log::info!("Successfully reset network");
-    Ok(())
-}
 
 pub fn get_current_working_dir() -> std::io::Result<std::path::PathBuf> {
     std::env::current_dir()
@@ -80,14 +45,20 @@ pub fn get_file_path(url: String) -> Option<String> {
     return None;
 }
 
-pub fn settings_path<P: AsRef<std::path::Path>>(home: P) -> std::path::PathBuf {
-    home.as_ref().join(".config/tomoon/tomoon.json")
-}
-
 pub fn get_decky_data_dir() -> std::io::Result<std::path::PathBuf> {
     let data_dir = get_current_working_dir()?
         .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
         .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
         .join("data/tomoon");
     Ok(data_dir)
+}
+
+pub fn get_settings_path() -> std::io::Result<std::path::PathBuf> {
+    let path = get_decky_data_dir()?.join("tomoon.json");
+    Ok(path)
+}
+
+pub fn get_sub_dir() -> std::io::Result<std::path::PathBuf> {
+    let path = get_decky_data_dir()?.join("subs");
+    Ok(path)
 }

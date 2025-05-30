@@ -43,10 +43,6 @@ export async function getEnabled(): Promise<boolean> {
   return (await call_backend("get_clash_status", []))[0];
 }
 
-export async function resetNetwork(): Promise<any[]> {
-  return await call_backend("reset_network", []);
-}
-
 export async function downloadSub(value: String): Promise<any[]> {
   return (await call_backend("download_sub", [value]))[0];
 }

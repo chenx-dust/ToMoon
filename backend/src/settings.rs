@@ -7,8 +7,6 @@ use crate::services::clash::controller::EnhancedMode;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Settings {
-    #[serde(default = "default_enable")]
-    pub enable: bool,
     #[serde(default = "default_skip_proxy")]
     pub skip_proxy: bool,
     #[serde(default = "default_override_dns")]
@@ -29,10 +27,6 @@ pub struct Settings {
 
 fn default_skip_proxy() -> bool {
     true
-}
-
-fn default_enable() -> bool {
-    false
 }
 
 fn default_override_dns() -> bool {
@@ -56,10 +50,7 @@ fn default_secret() -> String {
 }
 
 fn default_current_sub() -> String {
-    let default_profile = utils::get_current_working_dir()
-        .unwrap()
-        .join("bin/core/config.yaml");
-    default_profile.to_string_lossy().to_string()
+    "".to_string()
 }
 
 fn default_subscriptions() -> Vec<Subscription> {
@@ -96,37 +87,6 @@ impl Subscription {
     }
 }
 
-#[derive(Debug)]
-pub struct State {
-    pub home: PathBuf,
-    pub dirty: bool,
-}
-
-impl State {
-    pub fn new() -> Self {
-        let def = Self::default();
-        if cfg!(debug_assertions) {
-            return Self {
-                home: "./tmp".into(),
-                dirty: true,
-            };
-        }
-        Self {
-            home: usdpl_back::api::dirs::home().unwrap_or(def.home),
-            dirty: true,
-        }
-    }
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self {
-            home: "/root".into(),
-            dirty: true,
-        }
-    }
-}
-
 impl Settings {
     pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> Result<(), JsonError> {
         let path = path.as_ref();
@@ -149,7 +109,6 @@ impl Default for Settings {
             .unwrap()
             .join("bin/core/config.yaml");
         Self {
-            enable: false,
             skip_proxy: true,
             override_dns: true,
             enhanced_mode: EnhancedMode::FakeIp,

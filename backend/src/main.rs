@@ -2,6 +2,7 @@ mod api;
 mod services;
 mod utils;
 mod settings;
+mod subscribtions;
 mod test;
 
 use std::{collections::HashMap, sync::Mutex};
@@ -52,7 +53,6 @@ async fn main() -> Result<(), std::io::Error> {
     println!("Starting back-end ({} v{})", api::usdpl::NAME, api::usdpl::VERSION);
 
     let runtime = Runtime::new();
-    runtime.run();
 
     let runtime_pr = RuntimePtr(&runtime as *const Runtime);
 
@@ -61,7 +61,6 @@ async fn main() -> Result<(), std::io::Error> {
             Instance::new(PORT)
                 .register("set_clash_status", api::usdpl::set_clash_status(&runtime))
                 .register("get_clash_status", api::usdpl::get_clash_status(&runtime))
-                .register("reset_network", api::usdpl::reset_network())
                 .register("download_sub", api::usdpl::download_sub(&runtime))
                 .register("get_download_status", api::usdpl::get_download_status(&runtime))
                 .register("get_sub_list", api::usdpl::get_sub_list(&runtime))
@@ -70,7 +69,7 @@ async fn main() -> Result<(), std::io::Error> {
                 .register("set_sub", api::usdpl::set_sub(&runtime))
                 .register("update_subs", api::usdpl::update_subs(&runtime))
                 .register("get_update_status", api::usdpl::get_update_status(&runtime))
-                .register("create_debug_log", api::usdpl::create_debug_log(&runtime))
+                .register("create_debug_log", api::usdpl::create_debug_log)
                 .register("get_running_status", api::usdpl::get_running_status(&runtime))
                 .run().await.unwrap();
         }

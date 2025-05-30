@@ -1,9 +1,7 @@
 use std::{fs, path::PathBuf, thread};
 
 use crate::{
-    services::clash::runtime::{DownloadStatus, RunningStatus},
-    utils,
-    settings::{State, Subscription},
+    services::clash::runtime::{DownloadStatus, RunningStatus}, settings::Subscription, utils
 };
 
 use crate::services::clash::runtime::Runtime;
@@ -15,25 +13,8 @@ pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const NAME: &'static str = env!("CARGO_PKG_NAME");
 
 pub fn get_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
-    let runtime_settings = runtime.settings_clone();
     move |_| {
-        let mut lock = match runtime_settings.write() {
-            Ok(x) => x,
-            Err(e) => {
-                log::error!("get_enable failed to acquire settings read lock: {}", e);
-                return vec![];
-            }
-        };
         let is_clash_running = utils::is_clash_running();
-        if !is_clash_running && lock.enable
-        //Clash 不在后台但设置里却表示打开
-        {
-            lock.enable = false;
-            log::debug!(
-                "Error occurred while Clash is not running in background but settings defined running."
-            );
-            return vec![is_clash_running.into()];
-        }
         log::debug!("get_enable() success");
         log::info!("get clash status with {}", is_clash_running);
         vec![is_clash_running.into()]
@@ -42,131 +23,95 @@ pub fn get_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Pri
 
 pub fn set_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_settings = runtime.settings_clone();
-    let runtime_state = runtime.state_clone();
     let clash = runtime.clash_state_clone();
     let running_status = runtime.running_status_clone();
     move |params| {
-        if let Some(Primitive::Bool(enabled)) = params.get(0) {
-            let mut settings = match runtime_settings.write() {
-                Ok(x) => x,
+        let Some(Primitive::Bool(enabled)) = params.get(0) else {
+            log::error!("set_clash_status: invalid params");
+            return vec![false.into()];
+        };
+        let mut settings = match runtime_settings.write() {
+            Ok(x) => x,
+            Err(e) => {
+                log::error!("set_clash_status: failed to acquire settings write lock: {}", e);
+                return vec![false.into()];
+            }
+        };
+        log::info!("set_clash_status: setting to {}", enabled);
+        let mut clash = match clash.write() {
+            Ok(x) => x,
+            Err(e) => {
+                log::error!("set_enable failed to acquire state write lock: {}", e);
+                return vec![false.into()];
+            }
+        };
+        let mut run_status = match running_status.write() {
+            Ok(x) => x,
+            Err(e) => {
+                log::error!("set_enable failed to acquire run status write lock: {}", e);
+                return vec![false.into()];
+            }
+        };
+        *run_status = RunningStatus::Loading;
+        // 有些时候第一次没有选择订阅
+        if settings.current_sub == "" {
+            log::info!("no profile provided, try to use first profile.");
+            if let Some(sub) = settings.subscriptions.get(0) {
+                settings.current_sub = sub.path.clone();
+            } else {
+                log::error!("no profile provided.");
+                *run_status = RunningStatus::Failed;
+                return vec![false.into()];
+            }
+        }
+        if *enabled {
+            match clash.run(
+                &settings.current_sub,
+                settings.skip_proxy,
+                settings.override_dns,
+                settings.allow_remote_access,
+                settings.enhanced_mode,
+                settings.dashboard.clone(),
+                ) {
+                Ok(_) => (),
                 Err(e) => {
-                    log::error!("set_enable failed to acquire settings write lock: {}", e);
+                    log::error!("Run clash error: {}", e);
+                    *run_status = RunningStatus::Failed;
                     return vec![false.into()];
                 }
-            };
-            log::info!("set clash status to {}", enabled);
-            if settings.enable != *enabled {
-                let mut clash = match clash.write() {
-                    Ok(x) => x,
-                    Err(e) => {
-                        log::error!("set_enable failed to acquire state write lock: {}", e);
-                        return vec![false.into()];
-                    }
-                };
-                let mut run_status = match running_status.write() {
-                    Ok(x) => x,
-                    Err(e) => {
-                        log::error!("set_enable failed to acquire run status write lock: {}", e);
-                        return vec![false.into()];
-                    }
-                };
-                *run_status = RunningStatus::Loading;
-                // 有些时候第一次没有选择订阅
-                if settings.current_sub == "" {
-                    log::info!("no profile provided, try to use first profile.");
-                    if let Some(sub) = settings.subscriptions.get(0) {
-                        settings.current_sub = sub.path.clone();
-                    } else {
-                        log::error!("no profile provided.");
-                        *run_status = RunningStatus::Failed;
-                        return vec![false.into()];
-                    }
-                }
-                if *enabled {
-                    match clash.run(
-                        &settings.current_sub,
-                        settings.skip_proxy,
-                        settings.override_dns,
-                        settings.allow_remote_access,
-                        settings.enhanced_mode,
-                        settings.dashboard.clone(),
-                        ) {
-                        Ok(_) => (),
-                        Err(e) => {
-                            log::error!("Run clash error: {}", e);
-                            *run_status = RunningStatus::Failed;
-                            return vec![false.into()];
-                        }
-                    }
-                } else {
-                    // Disable Clash
-                    match clash.stop() {
-                        Ok(_) => {
-                            log::info!("successfully disable clash");
-                        }
-                        Err(e) => {
-                            log::error!("Disable clash error: {}", e);
-                            *run_status = RunningStatus::Failed;
-                            return vec![false.into()];
-                        }
-                    }
-                }
-                settings.enable = *enabled;
-                let mut state = match runtime_state.write() {
-                    Ok(x) => x,
-                    Err(e) => {
-                        log::error!("set_enable failed to acquire state write lock: {}", e);
-                        *run_status = RunningStatus::Failed;
-                        return vec![];
-                    }
-                };
-                state.dirty = true;
-                *run_status = RunningStatus::Success;
-                drop(run_status);
-                log::debug!("set_enable({}) success", enabled);
             }
-            vec![(*enabled).into()]
         } else {
-            return vec![false.into()];
-        }
-    }
-}
-
-pub fn reset_network() -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
-    |_| {
-        match utils::reset_system_network() {
-            Ok(_) => (),
-            Err(e) => {
-                log::error!("Error occured while reset_network() : {}", e);
-                return vec![];
+            // Disable Clash
+            match clash.stop() {
+                Ok(_) => {
+                    log::info!("successfully disable clash");
+                }
+                Err(e) => {
+                    log::error!("Disable clash error: {}", e);
+                    *run_status = RunningStatus::Failed;
+                    return vec![false.into()];
+                }
             }
         }
-        log::info!("Successfully reset network");
-        return vec![];
+        *run_status = RunningStatus::Success;
+        log::debug!("set_enable({}) success", enabled);
+        vec![(*enabled).into()]
     }
 }
 
 pub fn download_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let download_status = runtime.downlaod_status_clone();
-    let runtime_state = runtime.state_clone();
     let runtime_setting = runtime.settings_clone();
     move |params| {
         if let Some(Primitive::String(url)) = params.get(0) {
             match download_status.write() {
                 Ok(mut x) => {
-                    let path = match runtime_state.read() {
-                        Ok(x) => x.home.as_path().join(".config/tomoon/subs/"),
-                        Err(e) => {
-                            log::error!("download_sub() faild to acquire state read {}", e);
-                            return vec![];
-                        }
-                    };
+                    let path = utils::get_sub_dir().unwrap();
                     *x = DownloadStatus::Downloading;
                     //新线程复制准备
                     let url = url.clone();
                     let download_status = download_status.clone();
                     let runtime_setting = runtime_setting.clone();
-                    let runtime_state = runtime_state.clone();
                     //开始下载
                     thread::spawn(move || {
                         let update_status = |status: DownloadStatus| {
@@ -232,15 +177,6 @@ pub fn download_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primiti
                                     Ok(mut x) => {
                                         x.subscriptions
                                             .push(Subscription::new(path.to_string(), url.clone()));
-                                        let mut state = match runtime_state.write() {
-                                            Ok(x) => x,
-                                            Err(e) => {
-                                                log::error!("set_enable failed to acquire state write lock: {}", e);
-                                                update_status(DownloadStatus::Error);
-                                                return;
-                                            }
-                                        };
-                                        state.dirty = true;
                                     }
                                     Err(e) => {
                                         log::error!(
@@ -303,15 +239,6 @@ pub fn download_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primiti
                                         Ok(mut x) => {
                                             x.subscriptions
                                                 .push(Subscription::new(path.to_string(), url));
-                                            let mut state = match runtime_state.write() {
-                                                Ok(x) => x,
-                                                Err(e) => {
-                                                    log::error!("set_enable failed to acquire state write lock: {}", e);
-                                                    update_status(DownloadStatus::Error);
-                                                    return;
-                                                }
-                                            };
-                                            state.dirty = true;
                                         }
                                         Err(e) => {
                                             log::error!(
@@ -420,7 +347,6 @@ pub fn get_current_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Prim
 
 pub fn delete_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
-    let runtime_state = runtime.state_clone();
     move |params| {
         if let Some(Primitive::F64(id)) = params.get(0) {
             match runtime_setting.write() {
@@ -439,16 +365,6 @@ pub fn delete_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive
                         }
                         x.subscriptions.remove(*id as usize);
                     }
-                    //log::info!("delete {:?}", x.subscriptions.get(*id as usize).unwrap());
-                    drop(x);
-                    let mut state = match runtime_state.write() {
-                        Ok(x) => x,
-                        Err(e) => {
-                            log::error!("set_enable failed to acquire state write lock: {}", e);
-                            return vec![];
-                        }
-                    };
-                    state.dirty = true;
                 }
                 Err(e) => {
                     log::error!("delete_sub() faild to acquire runtime_setting write {}", e);
@@ -461,7 +377,6 @@ pub fn delete_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive
 
 pub fn set_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_clash = runtime.clash_state_clone();
-    let runtime_state = runtime.state_clone();
     let runtime_setting = runtime.settings_clone();
     move |params: Vec<Primitive>| {
         if let Some(Primitive::String(path)) = params.get(0) {
@@ -469,16 +384,6 @@ pub fn set_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
             match runtime_setting.write() {
                 Ok(mut x) => {
                     x.current_sub = (*path).clone();
-                    let mut state = match runtime_state.write() {
-                        Ok(x) => x,
-                        Err(e) => {
-                            log::error!("set_sub failed to acquire state write lock: {}", e);
-                            return vec![];
-                        }
-                    };
-                    state.dirty = true;
-                    drop(x);
-                    drop(state);
                 }
                 Err(e) => {
                     log::error!("get_enable failed to acquire settings read lock: {}", e);
@@ -594,46 +499,39 @@ pub fn get_update_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Pr
     }
 }
 
-pub fn create_debug_log(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
-    //let update_status = runtime.update_status_clone();
-    let home = match runtime.state_clone().read() {
-        Ok(state) => state.home.clone(),
-        Err(_) => State::default().home,
+pub fn create_debug_log(_: Vec<Primitive>) -> Vec<Primitive> {
+    let running_status = format!("Clash status : {}\n", utils::is_clash_running());
+    let tomoon_config = match fs::read_to_string(utils::get_settings_path().unwrap()) {
+        Ok(x) => x,
+        Err(e) => {
+            format!("can not get Tomoon config, error message: {} \n", e)
+        }
     };
-    move |_| {
-        let running_status = format!("Clash status : {}\n", utils::is_clash_running());
-        let tomoon_config = match fs::read_to_string(home.join(".config/tomoon/tomoon.json")) {
-            Ok(x) => x,
-            Err(e) => {
-                format!("can not get Tomoon config, error message: {} \n", e)
-            }
-        };
-        let tomoon_log = match fs::read_to_string("/tmp/tomoon.log") {
-            Ok(x) => x,
-            Err(e) => {
-                format!("can not get Tomoon log, error message: {} \n", e)
-            }
-        };
-        let clash_log = match fs::read_to_string("/tmp/tomoon.clash.log") {
-            Ok(x) => x,
-            Err(e) => {
-                format!("can not get Clash log, error message: {} \n", e)
-            }
-        };
+    let tomoon_log = match fs::read_to_string("/tmp/tomoon.log") {
+        Ok(x) => x,
+        Err(e) => {
+            format!("can not get Tomoon log, error message: {} \n", e)
+        }
+    };
+    let clash_log = match fs::read_to_string("/tmp/tomoon.clash.log") {
+        Ok(x) => x,
+        Err(e) => {
+            format!("can not get Clash log, error message: {} \n", e)
+        }
+    };
 
-        let log = format!(
-            "
-        {}\n
-        ToMoon config:\n
-        {}\n
-        ToMoon log:\n
-        {}\n
-        Clash log:\n
-        {}\n
-        ",
-            running_status, tomoon_config, tomoon_log, clash_log,
-        );
-        fs::write("/tmp/tomoon.debug.log", log).unwrap();
-        return vec![true.into()];
-    }
+    let log = format!(
+        "
+    {}\n
+    ToMoon config:\n
+    {}\n
+    ToMoon log:\n
+    {}\n
+    Clash log:\n
+    {}\n
+    ",
+        running_status, tomoon_config, tomoon_log, clash_log,
+    );
+    fs::write("/tmp/tomoon.debug.log", log).unwrap();
+    return vec![true.into()];
 }

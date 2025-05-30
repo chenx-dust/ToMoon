@@ -4,13 +4,12 @@ use std::time::Duration;
 use std::thread;
 
 use crate::utils;
-use crate::settings::{Settings, State};
+use crate::settings::{Settings};
 
 use super::controller::Controller;
 
 pub struct Runtime {
     settings: Arc<RwLock<Settings>>,
-    state: Arc<RwLock<State>>,
     clash_state: Arc<RwLock<Controller>>,
     downlaod_status: Arc<RwLock<DownloadStatus>>,
     update_status: Arc<RwLock<DownloadStatus>>,
@@ -52,8 +51,7 @@ impl std::fmt::Display for RunningStatus {
 
 impl Runtime {
     pub fn new() -> Self {
-        let new_state = State::new();
-        let settings_p = utils::settings_path(&new_state.home);
+        let settings_path = utils::get_settings_path().unwrap();
         //TODO: Clash 路径
         let clash = Controller::default();
         let download_status = DownloadStatus::None;
@@ -61,11 +59,10 @@ impl Runtime {
         let running_status = RunningStatus::None;
         Self {
             settings: Arc::new(RwLock::new(
-                crate::settings::Settings::open(settings_p)
+                crate::settings::Settings::open(settings_path)
                     .unwrap_or_default()
                     .into(),
             )),
-            state: Arc::new(RwLock::new(new_state)),
             clash_state: Arc::new(RwLock::new(clash)),
             downlaod_status: Arc::new(RwLock::new(download_status)),
             update_status: Arc::new(RwLock::new(update_status)),
@@ -75,10 +72,6 @@ impl Runtime {
 
     pub(crate) fn settings_clone(&self) -> Arc<RwLock<Settings>> {
         self.settings.clone()
-    }
-
-    pub(crate) fn state_clone(&self) -> Arc<RwLock<State>> {
-        self.state.clone()
     }
 
     pub fn clash_state_clone(&self) -> Arc<RwLock<Controller>> {
@@ -97,71 +90,4 @@ impl Runtime {
         self.running_status.clone()
     }
 
-    pub fn run(&self) -> thread::JoinHandle<()> {
-        let runtime_settings = self.settings_clone();
-        let runtime_state = self.state_clone();
-
-        //health check
-        //当程序上次异常退出时的处理
-        if let Ok(mut v) = runtime_settings.write() {
-            if !utils::is_clash_running() && v.enable {
-                v.enable = false;
-                drop(v);
-                //刷新网卡
-                match utils::reset_system_network() {
-                    Ok(_) => {}
-                    Err(e) => {
-                        log::error!("runtime failed to acquire settings write lock: {}", e);
-                    }
-                }
-            }
-        }
-
-        //save config
-        thread::spawn(move || {
-            let sleep_duration = Duration::from_millis(1000);
-            loop {
-                //let start_time = Instant::now();
-                {
-                    // save to file
-                    let state = match runtime_state.read() {
-                        Ok(x) => x,
-                        Err(e) => {
-                            log::error!("runtime failed to acquire state read lock: {}", e);
-                            continue;
-                        }
-                    };
-                    if state.dirty {
-                        // save settings to file
-                        let settings = match runtime_settings.read() {
-                            Ok(x) => x,
-                            Err(e) => {
-                                log::error!("runtime failed to acquire settings read lock: {}", e);
-                                continue;
-                            }
-                        };
-                        let settings_json: Settings = settings.clone().into();
-                        if let Err(e) = settings_json.save(utils::settings_path(&state.home)) {
-                            log::error!(
-                                "SettingsJson.save({}) error: {}",
-                                utils::settings_path(&state.home).display(),
-                                e
-                            );
-                        }
-                        //Self::on_set_enable(&settings, &state);
-                        drop(state);
-                        let mut state = match runtime_state.write() {
-                            Ok(x) => x,
-                            Err(e) => {
-                                log::error!("runtime failed to acquire state write lock: {}", e);
-                                continue;
-                            }
-                        };
-                        state.dirty = false;
-                    }
-                }
-                thread::sleep(sleep_duration);
-            }
-        })
-    }
 }

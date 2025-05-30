@@ -241,7 +241,7 @@ const Content: FC<{}> = ({}) => {
         </PanelSectionRow>
         <PanelSectionRow>
           <DropdownItem
-            // disabled={optionDropdownDisabled}
+            disabled={optionDropdownDisabled}
             strDefaultLabel={localizationManager.getString(
               L.SELECT_SUBSCRIPTION
             )}
@@ -396,21 +396,6 @@ const Content: FC<{}> = ({}) => {
         </PanelSectionRow>
       </PanelSection>
 
-      <PanelSection title={localizationManager.getString(L.TOOLS)}>
-        <PanelSectionRow>
-          <ButtonItem
-            layout="below"
-            onClick={() => {
-              backend.resolve(backend.resetNetwork(), () => {
-                Router.CloseSideMenus();
-                console.log("reset network");
-              });
-            }}
-          >
-            {localizationManager.getString(L.RESET_NETWORK)}
-          </ButtonItem>
-        </PanelSectionRow>
-      </PanelSection>
       <VersionComponent />
     </div>
   );
