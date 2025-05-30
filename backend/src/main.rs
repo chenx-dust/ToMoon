@@ -4,7 +4,7 @@ mod utils;
 mod settings;
 mod test;
 
-use std::{collections::HashMap, sync::Mutex, thread};
+use std::{collections::HashMap, sync::Mutex};
 
 use actix_cors::Cors;
 use actix_files as fs;
@@ -20,21 +20,8 @@ use crate::{
 const PORT: u16 = 55555;
 const WEB_PORT: u16 = 55556;
 
-#[actix_web::main]
+#[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
-    // WriteLogger::init(
-    //     #[cfg(debug_assertions)]
-    //     {
-    //         LevelFilter::Debug
-    //     },
-    //     #[cfg(not(debug_assertions))]
-    //     {
-    //         LevelFilter::Info
-    //     },
-    //     Default::default(),
-    //     std::fs::File::create("/tmp/tomoon.log").unwrap(),
-    // )
-    // .unwrap();
     if cfg!(debug_assertions) {
         CombinedLogger::init(
             vec![
@@ -69,24 +56,25 @@ async fn main() -> Result<(), std::io::Error> {
 
     let runtime_pr = RuntimePtr(&runtime as *const Runtime);
 
-    thread::spawn(move || {
-        Instance::new(PORT)
-            .register("set_clash_status", api::usdpl::set_clash_status(&runtime))
-            .register("get_clash_status", api::usdpl::get_clash_status(&runtime))
-            .register("reset_network", api::usdpl::reset_network())
-            .register("download_sub", api::usdpl::download_sub(&runtime))
-            .register("get_download_status", api::usdpl::get_download_status(&runtime))
-            .register("get_sub_list", api::usdpl::get_sub_list(&runtime))
-            .register("get_current_sub", api::usdpl::get_current_sub(&runtime))
-            .register("delete_sub", api::usdpl::delete_sub(&runtime))
-            .register("set_sub", api::usdpl::set_sub(&runtime))
-            .register("update_subs", api::usdpl::update_subs(&runtime))
-            .register("get_update_status", api::usdpl::get_update_status(&runtime))
-            .register("create_debug_log", api::usdpl::create_debug_log(&runtime))
-            .register("get_running_status", api::usdpl::get_running_status(&runtime))
-            .run_blocking()
-            .unwrap();
-    });
+    tokio::spawn(
+        async move {
+            Instance::new(PORT)
+                .register("set_clash_status", api::usdpl::set_clash_status(&runtime))
+                .register("get_clash_status", api::usdpl::get_clash_status(&runtime))
+                .register("reset_network", api::usdpl::reset_network())
+                .register("download_sub", api::usdpl::download_sub(&runtime))
+                .register("get_download_status", api::usdpl::get_download_status(&runtime))
+                .register("get_sub_list", api::usdpl::get_sub_list(&runtime))
+                .register("get_current_sub", api::usdpl::get_current_sub(&runtime))
+                .register("delete_sub", api::usdpl::delete_sub(&runtime))
+                .register("set_sub", api::usdpl::set_sub(&runtime))
+                .register("update_subs", api::usdpl::update_subs(&runtime))
+                .register("get_update_status", api::usdpl::get_update_status(&runtime))
+                .register("create_debug_log", api::usdpl::create_debug_log(&runtime))
+                .register("get_running_status", api::usdpl::get_running_status(&runtime))
+                .run().await.unwrap();
+        }
+    );
 
     // 启动一个 tokio 任务来运行 subconverter
     let subconverter_path = utils::get_current_working_dir()
@@ -179,6 +167,7 @@ async fn main() -> Result<(), std::io::Error> {
     })
     .bind(("0.0.0.0", WEB_PORT))
     .unwrap()
+    .workers(1)
     .run()
     .await
 }

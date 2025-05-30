@@ -14,7 +14,6 @@ jobs:
     permissions:
       contents: write
     steps:
-      #build ${{ github.event.repository.name }} start
       - uses: actions/checkout@v4
 
       - name: Install Tools
@@ -80,7 +79,7 @@ jobs:
         run: |
           npm i
           npm run build
-        working-directory: ${{ github.event.repository.name }}-web
+        working-directory: external-web
       # build front-end end
       # build backend start
       - uses: dtolnay/rust-toolchain@stable
@@ -102,7 +101,7 @@ jobs:
           cp plugin.json ./release/${PACKAGE}/plugin.json
           cp package.json ./release/${PACKAGE}/package.json
           cp -r ./tmp/core ./release/${PACKAGE}/bin/
-          cp -r ./${{ github.event.repository.name }}-web/dist ./release/${PACKAGE}/web
+          cp -r ./external-web/dist ./release/${PACKAGE}/web
           cp -r ./py_modules ./release/${PACKAGE}/py_modules
           mkdir -p ./release/${PACKAGE}/web/rules
           bash ./assets/subconverter_rules/dl_rules.sh ./release/${PACKAGE}/web/rules

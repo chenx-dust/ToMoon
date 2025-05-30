@@ -62,9 +62,9 @@ impl Default for Controller {
     fn default() -> Self {
         Self {
             path: utils::get_current_working_dir().unwrap().join("bin/core/clash"),
-            config: utils::get_current_working_dir()
+            config: utils::get_decky_data_dir()
                 .unwrap()
-                .join("bin/core/config.yaml"),
+                .join("config.yaml"),
             instance: None,
         }
     }
