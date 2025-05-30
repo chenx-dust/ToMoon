@@ -92,10 +92,10 @@ jobs:
 
       - name: Collect Files
         run: |
-          PACKAGE="${{ github.ref_name }}"
+          PACKAGE="${{ github.event.repository.name }}"
           mkdir -p ./release/${PACKAGE}/bin/core/web
           mkdir -p ./release/${PACKAGE}/dist
-          cp backend/target/x86_64-unknown-linux-gnu/release/${{ github.event.repository.name }} ./release/${PACKAGE}/bin/${{ github.event.repository.name }}
+          cp backend/target/x86_64-unknown-linux-gnu/release/tomoon ./release/${PACKAGE}/bin/tomoon
           cp ./dist/index.js ./release/${PACKAGE}/dist/index.js
           cp main.py ./release/${PACKAGE}/main.py
           cp plugin.json ./release/${PACKAGE}/plugin.json
