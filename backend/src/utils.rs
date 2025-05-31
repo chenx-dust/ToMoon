@@ -1,5 +1,3 @@
-use std::process::Command;
-
 use regex::Regex;
 
 use sysinfo::{ProcessExt, System, SystemExt};
@@ -50,6 +48,14 @@ pub fn get_decky_data_dir() -> std::io::Result<std::path::PathBuf> {
         .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
         .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
         .join("data/tomoon");
+    Ok(data_dir)
+}
+
+pub fn get_decky_logs_dir() -> std::io::Result<std::path::PathBuf> {
+    let data_dir = get_current_working_dir()?
+        .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
+        .parent().ok_or(std::io::ErrorKind::AddrNotAvailable)?
+        .join("logs/tomoon");
     Ok(data_dir)
 }
 

@@ -69,7 +69,7 @@ mod tests {
     // #[test]
     // fn test_yaml() {
     //     println!("{}", std::env::current_dir().unwrap().to_str().unwrap());
-    //     let mut clash = services::clash::Clash::default();
+    //     let mut clash = clash::Clash::default();
     //     clash.change_config(true, true, true, true);
     // }
 

@@ -1,20 +1,16 @@
 use std::fmt::Display;
-use std::process::{Child, Command};
 
 use std::{error, fs};
 
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
+use tokio::process::Command;
+use tokio::select;
+use tokio::sync::oneshot;
 
 use crate::utils;
 
 use serde_json::json;
-
-pub struct Controller {
-    pub path: std::path::PathBuf,
-    pub config: std::path::PathBuf,
-    pub instance: Option<Child>,
-}
 
 #[derive(Debug, Serialize, Deserialize, Copy, Clone)]
 pub enum EnhancedMode {
@@ -24,11 +20,12 @@ pub enum EnhancedMode {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum ClashErrorKind {
-    ConfigFormatError,
-    ConfigNotFound,
+    ContentError,
+    NotFoundError,
     NetworkError,
-    InnerError,
-    Default,
+    IOError,
+    KernelError,
+    OtherError,
 }
 
 #[derive(Debug)]
@@ -49,13 +46,10 @@ impl Display for ClashError {
     }
 }
 
-impl ClashError {
-    pub fn new() -> Self {
-        Self {
-            message: "".to_string(),
-            error_kind: ClashErrorKind::Default,
-        }
-    }
+pub struct Controller {
+    path: std::path::PathBuf,
+    config: std::path::PathBuf,
+    shutdown_tx: Option<oneshot::Sender<()>>,
 }
 
 impl Default for Controller {
@@ -65,13 +59,13 @@ impl Default for Controller {
             config: utils::get_decky_data_dir()
                 .unwrap()
                 .join("config.yaml"),
-            instance: None,
+            shutdown_tx: None,
         }
     }
 }
 
 impl Controller {
-    pub fn run(
+    pub async fn run(
         &mut self,
         config_path: &String,
         skip_proxy: bool,
@@ -102,7 +96,7 @@ impl Controller {
             Err(e) => {
                 return Err(ClashError {
                     message: e.to_string(),
-                    error_kind: ClashErrorKind::ConfigFormatError,
+                    error_kind: ClashErrorKind::ContentError,
                 });
             }
         }
@@ -110,45 +104,50 @@ impl Controller {
         //log::info!("Pre-setting network");
         //TODO: 未修改的 unwarp
         let run_config = self.get_running_config().unwrap();
-        let outputs = fs::File::create("/tmp/tomoon.clash.log").unwrap();
-        let errors = outputs.try_clone().unwrap();
+        let outputs = fs::File::create(utils::get_decky_logs_dir().unwrap().join("tomoon.clash.log")).unwrap();
+        let errors = outputs.try_clone().map_err(|e| {
+            return ClashError {
+                message: e.to_string(),
+                error_kind: ClashErrorKind::IOError,
+            }
+        })?;
 
         log::info!("Starting Clash...");
 
-        let clash = Command::new(self.path.clone())
+        let mut program = Command::new(self.path.clone())
             .arg("-d")
             .arg(clash_dir)
             .arg("-f")
             .arg(run_config)
             .stdout(outputs)
             .stderr(errors)
-            .spawn();
-        let clash: Result<Child, ClashError> = match clash {
-            Ok(x) => {
-                Ok(x)
-            },
-            Err(e) => {
-                log::error!("run Clash failed: {}", e);
-                //TODO: 开启 Clash 的错误处理
-                return Err(ClashError::new());
+            .spawn()
+            .map_err(|e| {
+            ClashError {
+                message: e.to_string(),
+                error_kind: ClashErrorKind::KernelError,
+            }})?;
+        let (tx, rx) = oneshot::channel();
+        self.shutdown_tx = Some(tx);
+        tokio::spawn(async move {
+            select! {
+                r = program.wait() => {
+                    log::info!("Clash exited with code {:?}", r);
+                }
+                _ = rx => {
+                    log::info!("Clash shutting down");
+                    program.kill().await.expect("Failed to kill clash: {}");
+                }
             }
-        };
-        self.instance = Some(clash.unwrap());
+        });
         Ok(())
     }
 
-    pub fn stop(&mut self) -> Result<(), Box<dyn error::Error>> {
-        let instance = self.instance.as_mut();
-        match instance {
-            Some(x) => {
-                x.kill()?;
-                x.wait()?;
-            }
-            None => {
-                //Not launch Clash yet...
-                log::error!("Error occurred while disabling Clash: Not launch Clash yet");
-            }
-        };
+    pub fn stop(&mut self) -> Result<(), String> {
+        self.shutdown_tx.take()
+            .ok_or(String::from("Clash not running"))?
+            .send(())
+            .map_err(|_| String::from("Failed to send shutdown signal"))?;
         Ok(())
     }
 
@@ -177,28 +176,31 @@ impl Controller {
         let res = match minreq::put(url)
             .with_header("Content-Type", "application/json")
             .with_body(body_str)
-            .send()
+            .send().await
         {
             Ok(x) => x,
             Err(e) => {
                 log::error!("Failed to restart Clash core: {}", e);
                 return Err(ClashError {
                     message: e.to_string(),
-                    error_kind: ClashErrorKind::InnerError,
+                    error_kind: ClashErrorKind::IOError,
                 });
             }
         };
 
         if res.status_code == 200 || res.status_code == 204 {
             log::info!("Clash config reloaded successfully");
+            Ok(())
         } else {
             log::error!(
                 "Failed to reload Clash config, status_code {}",
                 res.status_code
             );
+            Err(ClashError {
+                message: "Failed to reload Clash config".to_string(),
+                error_kind: ClashErrorKind::KernelError,
+            })
         }
-
-        Ok(())
     }
 
     pub async fn restart_core(&self) -> Result<(), ClashError> {
@@ -213,26 +215,29 @@ impl Controller {
         let res = match minreq::post(url)
             .with_header("Content-Type", "application/json")
             .with_body(body_str)
-            .send()
+            .send().await
         {
             Ok(x) => x,
             Err(e) => {
                 log::error!("Failed to restart Clash core: {}", e);
                 return Err(ClashError {
                     message: e.to_string(),
-                    error_kind: ClashErrorKind::InnerError,
+                    error_kind: ClashErrorKind::IOError,
                 });
             }
         };
 
         if res.status_code == 200 {
             log::info!("Clash restart successfully");
+            Ok(())
         } else {
             let data = res.as_str().unwrap();
             log::error!("Failed to restart Clash core: {}", data);
+            return Err(ClashError {
+                message: data.to_string(),
+                error_kind: ClashErrorKind::KernelError,
+            });
         }
-
-        Ok(())
     }
 
     pub fn change_config(

@@ -5,7 +5,6 @@ import subprocess
 import dashboard
 import decky
 import update
-import utils
 from config import logger, setup_logger
 from settings import SettingsManager
 
@@ -27,7 +26,7 @@ class Plugin:
         logger.info(f"dashboard_list: {dashboard_list}")
 
         logger.info("Start Tomoon.")
-        os.system("chmod -R a+x " + decky.DECKY_PLUGIN_DIR)
+        # os.system("chmod -R a+x " + decky.DECKY_PLUGIN_DIR)
         # 切换到工作目录
         os.chdir(decky.DECKY_PLUGIN_DIR)
         self.backend_proc = subprocess.Popen([decky.DECKY_PLUGIN_DIR + "/bin/tomoon"])

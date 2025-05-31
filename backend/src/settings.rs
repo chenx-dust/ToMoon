@@ -1,13 +1,16 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::Display;
-use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockWriteGuard};
 
-use crate::utils;
 
-use crate::services::clash::controller::EnhancedMode;
+use crate::clash::controller::EnhancedMode;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Settings {
+    #[serde(default = "default_backend_port")]
+    pub backend_port: u16,
+    #[serde(default = "default_external_port")]
+    pub external_port: u16,
     #[serde(default = "default_skip_proxy")]
     pub skip_proxy: bool,
     #[serde(default = "default_override_dns")]
@@ -24,6 +27,14 @@ pub struct Settings {
     pub dashboard: String,
     #[serde(default = "default_secret")]
     pub secret: String,
+}
+
+fn default_backend_port() -> u16 {
+    55555
+}
+
+fn default_external_port() -> u16 {
+    55556
 }
 
 fn default_skip_proxy() -> bool {
@@ -65,12 +76,12 @@ pub struct Subscription {
 }
 
 #[derive(Debug)]
-pub enum JsonError {
+pub enum SettingsError {
     Serde(serde_json::Error),
     Io(std::io::Error),
 }
 
-impl Display for JsonError {
+impl Display for SettingsError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
             Self::Serde(e) => (e as &dyn Display).fmt(f),
@@ -89,18 +100,18 @@ impl Subscription {
 }
 
 impl Settings {
-    pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> Result<(), JsonError> {
+    pub fn save<P: AsRef<std::path::Path>>(&self, path: P) -> Result<(), SettingsError> {
         let path = path.as_ref();
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(JsonError::Io)?;
+            std::fs::create_dir_all(parent).map_err(SettingsError::Io)?;
         }
-        let mut file = std::fs::File::create(path).map_err(JsonError::Io)?;
-        serde_json::to_writer_pretty(&mut file, &self).map_err(JsonError::Serde)
+        let mut file = std::fs::File::create(path).map_err(SettingsError::Io)?;
+        serde_json::to_writer_pretty(&mut file, &self).map_err(SettingsError::Serde)
     }
 
-    pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Settings, JsonError> {
-        let mut file = std::fs::File::open(path).map_err(JsonError::Io)?;
-        serde_json::from_reader(&mut file).map_err(JsonError::Serde)
+    pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Settings, SettingsError> {
+        let mut file = std::fs::File::open(path).map_err(SettingsError::Io)?;
+        serde_json::from_reader(&mut file).map_err(SettingsError::Serde)
     }
 }
 
@@ -124,7 +135,7 @@ impl SettingsInstance {
         }
     }
 
-    pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self, JsonError> {
+    pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self, SettingsError> {
         if path.as_ref().exists() {
             let settings = Arc::new(RwLock::new(Settings::open(path.as_ref())?));
             Ok(Self {
@@ -138,7 +149,7 @@ impl SettingsInstance {
         }
     }
 
-    pub fn save(&self) -> Result<(), JsonError> {
+    pub fn save(&self) -> Result<(), SettingsError> {
         self.settings.write().unwrap().save(&self.path)?;
         Ok(())
     }
@@ -147,7 +158,7 @@ impl SettingsInstance {
         self.settings.read().unwrap().clone()
     }
 
-    pub fn update<T>(&self, function: impl Fn (RwLockWriteGuard<'_, Settings>) -> T) -> Result<T, JsonError> {
+    pub fn update<T>(&self, function: impl Fn (RwLockWriteGuard<'_, Settings>) -> T) -> Result<T, SettingsError> {
         let result = function(self.settings.write().unwrap());
         self.save()?;
         Ok(result)

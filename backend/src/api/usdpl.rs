@@ -1,13 +1,12 @@
-use std::{fs, path::PathBuf, thread};
+use std::fs;
 
 use crate::{
-    services::clash::runtime::{DownloadStatus, RunningStatus}, settings::{self, Subscription}, subscriptions, utils
+    clash::runtime::{DownloadStatus, RunningStatus}, subscriptions, utils
 };
 
-use crate::services::clash::runtime::Runtime;
+use crate::clash::runtime::Runtime;
 
-use rand::{distributions::Alphanumeric, Rng};
-use usdpl_back::core::serdes::Primitive;
+use usdpl_back::{core::serdes::Primitive, AsyncCallable};
 
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const NAME: &'static str = env!("CARGO_PKG_NAME");
@@ -95,52 +94,54 @@ pub fn set_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Pri
     }
 }
 
-pub fn download_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
+pub fn download_sub(runtime: &Runtime) -> impl AsyncCallable {
     let download_status = runtime.downlaod_status_clone();
     let runtime_setting = runtime.settings_clone();
-    move |params| {
-        if let Some(Primitive::String(url)) = params.get(0) {
-            match download_status.write() {
-                Ok(mut x) => {
-                    let path = utils::get_sub_dir().unwrap();
-                    *x = DownloadStatus::Downloading;
-                    //新线程复制准备
-                    let url = url.clone();
-                    let download_status = download_status.clone();
-                    let runtime_setting = runtime_setting.clone();
-                    //开始下载
-                    thread::spawn(move || {
-                        let update_status = |status: DownloadStatus| {
-                            //修改下载状态
-                            match download_status.write() {
-                                Ok(mut x) => {
-                                    *x = status;
+    move |params: Vec<Primitive>| {
+        let download_status = download_status.clone();
+        let runtime_setting = runtime_setting.clone();
+        async move {
+            if let Some(Primitive::String(url)) = params.get(0) {
+                match download_status.write() {
+                    Ok(mut x) => {
+                        *x = DownloadStatus::Downloading;
+                        //新线程复制准备
+                        let url = url.clone();
+                        let download_status = download_status.clone();
+                        let runtime_setting = runtime_setting.clone();
+                        //开始下载
+                        tokio::spawn(async move {
+                            let update_status = |status: DownloadStatus| {
+                                //修改下载状态
+                                match download_status.write() {
+                                    Ok(mut x) => {
+                                        *x = status;
+                                    }
+                                    Err(e) => {
+                                        log::error!(
+                                            "download_sub() faild to acquire download_status write {}",
+                                            e
+                                        );
+                                    }
                                 }
+                            };
+                            match subscriptions::download_new_sub(&url, &runtime_setting).await {
+                                Ok(_) => update_status(DownloadStatus::Success),
                                 Err(e) => {
-                                    log::error!(
-                                        "download_sub() faild to acquire download_status write {}",
-                                        e
-                                    );
+                                    update_status(DownloadStatus::Failed);
+                                    log::error!("download_sub() failed to download sub {}", e);
                                 }
                             }
-                        };
-                        match subscriptions::download_sub(url, false, runtime_setting) {
-                            Ok(_) => update_status(DownloadStatus::Success),
-                            Err(e) => {
-                                update_status(DownloadStatus::Failed);
-                                log::error!("download_sub() failed to download sub {}", e);
-                            }
-                        }
-                    });
-                }
-                Err(_) => {
-                    log::error!("download_sub() faild to acquire state write");
-                    return vec![];
+                        });
+                    }
+                    Err(_) => {
+                        log::error!("download_sub() faild to acquire state write");
+                        return vec![];
+                    }
                 }
             }
-        } else {
+            return vec![];
         }
-        return vec![];
     }
 }
 
@@ -251,33 +252,16 @@ pub fn set_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     }
 }
 
-pub fn update_subs(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
-    let runtime_update_status = runtime.update_status_clone();
-    let runtime_setting = runtime.settings_clone();
-    move |_| {
-        if let Ok(mut x) = runtime_update_status.write() {
-            *x = DownloadStatus::Downloading;
-            let subs = runtime_setting.get().subscriptions;
-            let runtime_update_status = runtime_update_status.clone();
-            thread::spawn(move || );
-        }
-        return vec![];
-    }
-}
+pub fn update_subs(runtime: &Runtime) -> impl AsyncCallable {
+    let settings = runtime.settings.clone();
+    move |_: Vec<Primitive>| {
+        let settings = settings.clone();
 
-pub fn get_update_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
-    let update_status = runtime.update_status_clone();
-    move |_| {
-        match update_status.read() {
-            Ok(x) => {
-                let status = x.to_string();
-                return vec![status.into()];
-            }
-            Err(_) => {
-                log::error!("Error occured while get_update_status()");
-            }
+        async move {
+            let subs = settings.get().subscriptions;
+            subscriptions::update_subs(subs).await;
+            return vec![];
         }
-        return vec![];
     }
 }
 

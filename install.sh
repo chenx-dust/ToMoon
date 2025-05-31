@@ -26,10 +26,11 @@ for req in "${REQUIREMENTS[@]}"; do
 done
 
 AUTHOR="chenx-dust"
-PACKAGE="ToMoon"
-API_URL="https://api.github.com/repos/${AUTHOR}/${PACKAGE}/releases/latest"
+REPO_NAME="ToMoon"
+PACKAGE="tomoon"
+API_URL="https://api.github.com/repos/${AUTHOR}/${REPO_NAME}/releases/latest"
 
-echo "Installing $PACKAGE"
+echo "Installing $REPO_NAME"
 
 PLUGIN_DIR="${HOME}/homebrew/plugins/${PACKAGE}"
 mkdir -p $PLUGIN_DIR
@@ -82,5 +83,7 @@ else
   rm -rf $PLUGIN_DIR/*
   cp -R "${TEMP_DIR}/${PACKAGE}/*" $PLUGIN_DIR
 fi
+
+sudo setcap cap_net_bind_service,cap_net_admin,cap_sys_ptrace,cap_dac_read_search,cap_dac_override,cap_net_raw=+ep ${PLUGIN_DIR}/${PACKAGE}/bin/core/clash
 
 sudo systemctl restart plugin_loader.service

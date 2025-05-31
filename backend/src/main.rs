@@ -1,25 +1,19 @@
 mod api;
-mod services;
+mod clash;
 mod utils;
 mod settings;
 mod subscriptions;
 mod test;
 
-use std::{collections::HashMap, sync::Mutex};
-
 use actix_cors::Cors;
 use actix_files as fs;
-use actix_web::{middleware, web, App, HttpServer};
+use actix_web::{http::Method, middleware, web, App, HttpServer};
 use simplelog::{ColorChoice, CombinedLogger, LevelFilter, TermLogger, TerminalMode, WriteLogger};
-use usdpl_back::Instance;
 
-use crate::{
-    services::clash::runtime::Runtime,
-    api::actix::RuntimePtr,
-};
+use crate::clash::runtime::Runtime;
 
-const PORT: u16 = 55555;
-const WEB_PORT: u16 = 55556;
+pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+pub const PACKAGE_NAME: &'static str = env!("CARGO_PKG_NAME");
 
 #[tokio::main]
 async fn main() -> Result<(), std::io::Error> {
@@ -27,15 +21,15 @@ async fn main() -> Result<(), std::io::Error> {
         CombinedLogger::init(
             vec![
                 TermLogger::new(
-                    LevelFilter::Info,
+                    LevelFilter::Debug,
                     Default::default(),
                     TerminalMode::Mixed,
                     ColorChoice::Auto,
                 ),
                 WriteLogger::new(
-                    LevelFilter::Info,
+                    LevelFilter::Debug,
                     Default::default(),
-                    std::fs::File::create("/tmp/tomoon.log").unwrap(),
+                    std::fs::File::create(utils::get_decky_logs_dir().unwrap().join("tomoon.json")).unwrap(),
                 ),
             ],
         ).unwrap();
@@ -43,129 +37,82 @@ async fn main() -> Result<(), std::io::Error> {
         WriteLogger::init(
             LevelFilter::Info,
             Default::default(),
-            std::fs::File::create("/tmp/tomoon.log").unwrap(),
+            std::fs::File::create(utils::get_decky_logs_dir().unwrap().join("tomoon.json")).unwrap(),
         )
         .unwrap();
     }
 
-    log::info!("Starting back-end ({} v{})", api::usdpl::NAME, api::usdpl::VERSION);
+    log::info!("Starting back-end ({} v{})", PACKAGE_NAME, VERSION);
     log::info!("{}", std::env::current_dir().unwrap().to_str().unwrap());
-    println!("Starting back-end ({} v{})", api::usdpl::NAME, api::usdpl::VERSION);
+    println!("Starting back-end ({} v{})", PACKAGE_NAME, VERSION);
 
     let runtime = Runtime::new();
-
-    let runtime_pr = RuntimePtr(&runtime as *const Runtime);
+    let runtime_cp = runtime.clone();
+    let backend_port = runtime.settings.get().backend_port;
+    let external_port = runtime.settings.get().external_port;
 
     tokio::spawn(
-        async move {
-            Instance::new(PORT)
-                .register("set_clash_status", api::usdpl::set_clash_status(&runtime))
-                .register("get_clash_status", api::usdpl::get_clash_status)
-                .register("download_sub", api::usdpl::download_sub(&runtime))
-                .register("get_download_status", api::usdpl::get_download_status(&runtime))
-                .register("get_sub_list", api::usdpl::get_sub_list(&runtime))
-                .register("get_current_sub", api::usdpl::get_current_sub(&runtime))
-                .register("delete_sub", api::usdpl::delete_sub(&runtime))
-                .register("set_sub", api::usdpl::set_sub(&runtime))
-                .register("update_subs", api::usdpl::update_subs(&runtime))
-                .register("get_update_status", api::usdpl::get_update_status(&runtime))
-                .register("create_debug_log", api::usdpl::create_debug_log)
-                .register("get_running_status", api::usdpl::get_running_status(&runtime))
-                .run().await.unwrap();
-        }
+        HttpServer::new(move || {
+            App::new()
+                .app_data(web::Data::new(runtime.clone()))
+                .wrap(middleware::Logger::default())
+                .wrap(Cors::default()
+                    .allow_any_origin()
+                    .allowed_methods(vec![Method::GET, Method::POST])
+                    .allow_any_header())
+                // 公共接口
+                .service(
+                    web::resource("/download_sub")
+                    .route(web::post().to(api::controller::download_sub)))
+                // web
+                .service(
+                    fs::Files::new("/", "./web")
+                        .index_file("index.html")
+                        .show_files_listing(),
+                )
+        })
+        .bind(("0.0.0.0", external_port))?
+        .bind(("[::]", external_port))?
+        .workers(1)
+        .run()
     );
 
-    // 启动一个 tokio 任务来运行 subconverter
-    let subconverter_path = utils::get_current_working_dir()
-        .unwrap()
-        .join("bin/subconverter");
-    tokio::spawn(async move {
-        if subconverter_path.exists() && subconverter_path.is_file() {
-            let mut command = tokio::process::Command::new(subconverter_path);
-            // 可以在这里添加命令行参数
-            // command.arg("some_argument");
-
-            match command.spawn() {
-                Ok(mut child) => {
-                    log::info!("Subconverter started with PID: {}", child.id().unwrap());
-
-                    loop {
-                        tokio::select! {
-                            _ = child.wait() => {
-                                log::info!("Subconverter process exited.");
-                                break;
-                            }
-                        }
-                    }
-                }
-                Err(e) => log::error!("Failed to start subconverter: {}", e),
-            }
-        } else {
-            log::error!(
-                "Subconverter path does not exist or is not a file: {:?}",
-                subconverter_path
-            );
-        }
-    });
-
-    let app_state = web::Data::new(api::actix::AppState {
-        link_table: Mutex::new(HashMap::new()),
-        runtime: Mutex::new(runtime_pr),
-    });
     HttpServer::new(move || {
-        let cors = Cors::default()
-            .allow_any_origin()
-            .allow_any_method()
-            .allow_any_header();
         App::new()
-            .app_data(app_state.clone())
-            // enable logger
+            .app_data(web::Data::new(runtime_cp.clone()))
             .wrap(middleware::Logger::default())
-            .wrap(cors)
-            .service(
-                web::resource("/download_sub").route(web::post().to(api::actix::download_sub)),
-            )
-            .service(web::resource("/get_link").route(web::get().to(api::actix::get_link)))
+            .wrap(Cors::permissive())
+            // 功能接口
             .service(
                 web::resource("/get_ip_address")
-                    .route(web::get().to(api::actix::get_local_web_address)),
-            )
-            .service(web::resource("/skip_proxy").route(web::post().to(api::actix::skip_proxy)))
-            .service(
-                web::resource("/override_dns").route(web::post().to(api::actix::override_dns)),
-            )
-            .service(
-                web::resource("/enhanced_mode").route(web::post().to(api::actix::enhanced_mode)),
-            )
-            .service(web::resource("/get_config").route(web::get().to(api::actix::get_config)))
-            //.service(web::resource("/manual").route(web::get().to(external_web.web_download_sub)))
-            // allow_remote_access
-            .service(
-                web::resource("/allow_remote_access")
-                    .route(web::post().to(api::actix::allow_remote_access)),
-            )
-            // reload_clash_config
+                .route(web::get().to(api::controller::get_local_web_address)))
             .service(
                 web::resource("/reload_clash_config")
-                    .route(web::get().to(api::actix::reload_clash_config)),
-            )
-            // restart_clash
+                    .route(web::get().to(api::controller::reload_clash_config)))
             .service(
-                web::resource("/restart_clash").route(web::get().to(api::actix::restart_clash)),
-            )
-            // set_dashboard
+                web::resource("/restart_clash")
+                .route(web::get().to(api::controller::restart_clash)))
             .service(
-                web::resource("/set_dashboard").route(web::post().to(api::actix::set_dashboard)),
-            )
-            // web
+                web::resource("/download_sub")
+                .route(web::post().to(api::controller::download_sub)))
+            // 设置值
             .service(
-                fs::Files::new("/", "./web")
-                    .index_file("index.html")
-                    .show_files_listing(),
-            )
+                web::resource("/skip_proxy")
+                .route(web::post().to(api::settings::skip_proxy)))
+            .service(
+                web::resource("/override_dns")
+                .route(web::post().to(api::settings::override_dns)))
+            .service(
+                web::resource("/enhanced_mode")
+                .route(web::post().to(api::settings::enhanced_mode)))
+            .service(
+                web::resource("/allow_remote_access")
+                    .route(web::post().to(api::settings::allow_remote_access)))
+            .service(
+                web::resource("/dashboard")
+                .route(web::post().to(api::settings::dashboard)))
     })
-    .bind(("0.0.0.0", WEB_PORT))
-    .unwrap()
+    .bind(("localhost", backend_port))?
     .workers(1)
     .run()
     .await

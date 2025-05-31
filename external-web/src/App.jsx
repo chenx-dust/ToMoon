@@ -24,7 +24,7 @@ function App() {
               To Moon
             </h1>
             <p className='px-2 text-gray-500 dark:text-gray-400 text-center'>
-              支持 Mihomo/Clash 订阅，其他形式请启用订阅转换
+              支持 Mihomo/Clash 订阅
             </p>
             <div className='w-full flex px-2 h-12'>
               <input id="input-url" className='grow
@@ -46,32 +46,6 @@ function App() {
                   <path d="M0.0228571 48L48 24L0.0228571 0L0 18.6667L34.2857 24L0 29.3333L0.0228571 48Z" fill="white" />
                 </svg>
               </button>
-            </div>
-            <div className="relative inline-flex items-center cursor-pointer gap-2">
-              <label className="switch">
-                <input type="checkbox" className="sr-only peer" checked={isSubscribed} onChange={handleToggleChange} />
-                <div className="w-10 h-6
-                  bg-gray-400
-                  dark:bg-gray-700
-                  peer-focus:outline-none
-                  rounded-full
-                  peer
-                  peer-checked:after:translate-x-4
-                  peer-checked:after:border-white
-                  after:content-['']
-                  after:absolute
-                  after:top-[6px]
-                  after:left-[4px]
-                  after:bg-white
-                  after:dark:bg-gray-300
-                  after:rounded-full
-                  after:h-4
-                  after:w-4
-                  after:transition-all
-                  peer-checked:bg-indigo-400
-                  peer-checked:dark:bg-indigo-800"/>
-              </label>
-              <span className="text-xl text-gray-500 dark:text-gray-300" onClick={handleToggleChange}>启用订阅转换</span>
             </div>
           </div>
         </div>
