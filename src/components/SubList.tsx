@@ -1,4 +1,5 @@
 import { ButtonItem } from "@decky/ui";
+import { toaster } from "@decky/api";
 import { FC } from "react";
 import * as backend from "../backend/backend";
 import { localizationManager, L } from "../i18n";
@@ -19,13 +20,23 @@ export const SubList: FC<appProp> = ({ Subscriptions, UpdateSub, Refresh }) => {
               description={x.url}
               onClick={() => {
                 //删除订阅
-                UpdateSub((source: Array<any>) => {
-                  let i = source.indexOf(x);
-                  source.splice(i, 1);
-                  return source;
+                backend.resolve(backend.deleteSub(x.id), (rtn: [boolean, String]) => {
+                  const [success, message] = rtn;
+                  if (success) {
+                    UpdateSub((source: Array<any>) => {
+                      let i = source.indexOf(x);
+                      source.splice(i, 1);
+                      return source;
+                    });
+                    Refresh();
+                  } else {
+                    console.log("delete sub fail.");
+                    toaster.toast({
+                      title: localizationManager.getString(L.DELETE_FAILURE),
+                      body: message,
+                    });
+                  }
                 });
-                backend.resolve(backend.deleteSub(x.id), () => {});
-                Refresh();
               }}
             >
               {localizationManager.getString(L.DELETE)}

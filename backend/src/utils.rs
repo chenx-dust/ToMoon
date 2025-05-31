@@ -62,3 +62,10 @@ pub fn get_sub_dir() -> std::io::Result<std::path::PathBuf> {
     let path = get_decky_data_dir()?.join("subs");
     Ok(path)
 }
+
+pub fn get_user_agent() -> String {
+    format!(
+        "ToMoon/{} mihomo/1.19.4 clash-verge/2.2.3 Clash/v1.18.0",
+        env!("CARGO_PKG_VERSION")
+    )
+}

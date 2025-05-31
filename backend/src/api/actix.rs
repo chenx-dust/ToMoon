@@ -6,7 +6,7 @@ use std::{collections::HashMap, fs, path::PathBuf, sync::Mutex};
 use content_disposition;
 
 use crate::{
-    services::clash::controller::{ClashError, ClashErrorKind, EnhancedMode}, subscribtions, utils
+    services::clash::controller::{ClashError, ClashErrorKind, EnhancedMode}, subscriptions, utils
 };
 
 pub struct RuntimePtr(pub *const crate::services::clash::runtime::Runtime);
@@ -136,19 +136,12 @@ pub async fn skip_proxy(
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
     }
-    match runtime_settings.write() {
-        Ok(mut x) => {
-            x.skip_proxy = skip_proxy;
-        }
-        Err(e) => {
-            log::error!("Failed while toggle skip Steam proxy.");
-            log::error!("Error Message:{}", e);
-            return Err(actix_web::Error::from(ClashError {
-                message: e.to_string(),
-                error_kind: ClashErrorKind::ConfigNotFound,
-            }));
-        }
-    }
+    runtime_settings.update(|mut x| x.skip_proxy = skip_proxy)
+        .map_err(|e| actix_web::Error::from(ClashError {
+             message: e.to_string(),
+            error_kind: ClashErrorKind::ConfigNotFound,
+        }))?;
+
     let r = SkipProxyResponse {
         message: "修改成功".to_string(),
         status_code: 200,
@@ -167,19 +160,12 @@ pub async fn override_dns(
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
     }
-    match runtime_settings.write() {
-        Ok(mut x) => {
-            x.override_dns = override_dns;
-        }
-        Err(e) => {
-            log::error!("Failed while toggle override dns.");
-            log::error!("Error Message:{}", e);
-            return Err(actix_web::Error::from(ClashError {
-                message: e.to_string(),
-                error_kind: ClashErrorKind::ConfigNotFound,
-            }));
-        }
-    }
+    runtime_settings.update(|mut x| x.override_dns = override_dns)
+        .map_err(|e| actix_web::Error::from(ClashError {
+             message: e.to_string(),
+            error_kind: ClashErrorKind::ConfigNotFound,
+        }))?;
+
     let r = OverrideDNSResponse {
         message: "修改成功".to_string(),
         status_code: 200,
@@ -199,19 +185,12 @@ pub async fn allow_remote_access(
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
     }
-    match runtime_settings.write() {
-        Ok(mut x) => {
-            x.allow_remote_access = allow_remote_access;
-        }
-        Err(e) => {
-            log::error!("Failed while toggle allow_remote_access.");
-            log::error!("Error Message:{}", e);
-            return Err(actix_web::Error::from(ClashError {
-                message: e.to_string(),
-                error_kind: ClashErrorKind::ConfigNotFound,
-            }));
-        }
-    }
+    runtime_settings.update(|mut x| x.allow_remote_access = allow_remote_access)
+        .map_err(|e| actix_web::Error::from(ClashError {
+             message: e.to_string(),
+            error_kind: ClashErrorKind::ConfigNotFound,
+        }))?;
+
     let r = OverrideDNSResponse {
         message: "修改成功".to_string(),
         status_code: 200,
@@ -230,19 +209,11 @@ pub async fn enhanced_mode(
         let runtime = runtime.0.as_ref().unwrap();
         runtime_settings = runtime.settings_clone();
     }
-    match runtime_settings.write() {
-        Ok(mut x) => {
-            x.enhanced_mode = enhanced_mode;
-        }
-        Err(e) => {
-            log::error!("Failed while toggle enhanced mode.");
-            log::error!("Error Message:{}", e);
-            return Err(actix_web::Error::from(ClashError {
-                message: e.to_string(),
-                error_kind: ClashErrorKind::ConfigNotFound,
-            }));
-        }
-    }
+    runtime_settings.update(|mut x| x.enhanced_mode = enhanced_mode)
+        .map_err(|e| actix_web::Error::from(ClashError {
+             message: e.to_string(),
+            error_kind: ClashErrorKind::ConfigNotFound,
+        }))?;
     let r = OverrideDNSResponse {
         message: "修改成功".to_string(),
         status_code: 200,
@@ -263,19 +234,11 @@ pub async fn set_dashboard(
         runtime_settings = runtime.settings_clone();
     }
 
-    match runtime_settings.write() {
-        Ok(mut x) => {
-            x.dashboard = dashboard;
-        }
-        Err(e) => {
-            log::error!("Failed while set dashboard.");
-            log::error!("Error Message:{}", e);
-            return Err(actix_web::Error::from(ClashError {
-                message: e.to_string(),
-                error_kind: ClashErrorKind::ConfigNotFound,
-            }));
-        }
-    }
+    runtime_settings.update(|mut x| x.dashboard = dashboard.clone())
+        .map_err(|e| actix_web::Error::from(ClashError {
+             message: e.to_string(),
+            error_kind: ClashErrorKind::ConfigNotFound,
+        }))?;
     let r = DashboardResponse {
         message: "修改成功".to_string(),
         status_code: 200,
@@ -303,38 +266,6 @@ pub async fn restart_clash(state: web::Data<AppState>) -> Result<HttpResponse> {
             }));
         }
     };
-
-    // let settings = match runtime_settings.write() {
-    //     Ok(x) => x,
-    //     Err(e) => {
-    //         log::error!(
-    //             "read runtime_settings failed to acquire state write lock: {}",
-    //             e
-    //         );
-    //         return Err(actix_web::Error::from(ClashError {
-    //             Message: e.to_string(),
-    //             ErrorKind: ClashErrorKind::InnerError,
-    //         }));
-    //     }
-    // };
-
-    // match clash.change_config(
-    //     settings.skip_proxy,
-    //     settings.override_dns,
-    //     settings.allow_remote_access,
-    //     settings.enhanced_mode,
-    //     settings.dashboard.clone(),
-    // ) {
-    //     Ok(_) => {}
-    //     Err(e) => {
-    //         log::error!("Failed while change clash config.");
-    //         log::error!("Error Message:{}", e);
-    //         return Err(actix_web::Error::from(ClashError {
-    //             Message: e.to_string(),
-    //             ErrorKind: ClashErrorKind::InnerError,
-    //         }));
-    //     }
-    // }
 
     match clash.restart_core().await {
         Ok(_) => {}
@@ -376,16 +307,8 @@ pub async fn reload_clash_config(state: web::Data<AppState>) -> Result<HttpRespo
         }
     };
 
-    let settings = match runtime_settings.write() {
-        Ok(x) => x,
-        Err(e) => {
-            log::error!("read runtime_settings failed: {}", e);
-            return Err(actix_web::Error::from(ClashError {
-                message: e.to_string(),
-                error_kind: ClashErrorKind::InnerError,
-            }));
-        }
-    };
+
+    let settings = runtime_settings.get();
 
     match clash.change_config(
         settings.skip_proxy,
@@ -445,33 +368,22 @@ pub async fn get_config(state: web::Data<AppState>) -> Result<HttpResponse> {
         }
     };
 
-    match runtime_settings.read() {
-        Ok(x) => {
-            let secret = match clash.get_running_secret() {
-                Ok(s) => s,
-                Err(_) => x.secret.clone(),
-            };
-
-            let r = GetConfigResponse {
-                skip_proxy: x.skip_proxy,
-                override_dns: x.override_dns,
-                allow_remote_access: x.allow_remote_access,
-                enhanced_mode: x.enhanced_mode,
-                dashboard: x.dashboard.clone(),
-                secret: secret,
-                status_code: 200,
-            };
-            return Ok(HttpResponse::Ok().json(r));
-        }
-        Err(e) => {
-            log::error!("Failed while geting skip Steam proxy.");
-            log::error!("Error Message:{}", e);
-            return Err(actix_web::Error::from(ClashError {
-                message: e.to_string(),
-                error_kind: ClashErrorKind::ConfigNotFound,
-            }));
-        }
+    let settings = runtime_settings.get();
+    let secret = match clash.get_running_secret() {
+        Ok(s) => s,
+        Err(_) => settings.secret.clone(),
     };
+
+    let r = GetConfigResponse {
+        skip_proxy: settings.skip_proxy,
+        override_dns: settings.override_dns,
+        allow_remote_access: settings.allow_remote_access,
+        enhanced_mode: settings.enhanced_mode,
+        dashboard: settings.dashboard.clone(),
+        secret: secret,
+        status_code: 200,
+    };
+    return Ok(HttpResponse::Ok().json(r));
 }
 
 pub async fn download_sub(
@@ -488,7 +400,7 @@ pub async fn download_sub(
         runtime_settings = runtime.settings_clone();
     }
 
-    subscribtions::download_sub(url, subconv, runtime_settings)?;
+    subscriptions::download_sub(url, subconv, runtime_settings)?;
 
     let r = GenLinkResponse {
         message: "下载成功".to_string(),

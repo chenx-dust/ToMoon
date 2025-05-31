@@ -2,7 +2,7 @@ mod api;
 mod services;
 mod utils;
 mod settings;
-mod subscribtions;
+mod subscriptions;
 mod test;
 
 use std::{collections::HashMap, sync::Mutex};
@@ -60,7 +60,7 @@ async fn main() -> Result<(), std::io::Error> {
         async move {
             Instance::new(PORT)
                 .register("set_clash_status", api::usdpl::set_clash_status(&runtime))
-                .register("get_clash_status", api::usdpl::get_clash_status(&runtime))
+                .register("get_clash_status", api::usdpl::get_clash_status)
                 .register("download_sub", api::usdpl::download_sub(&runtime))
                 .register("get_download_status", api::usdpl::get_download_status(&runtime))
                 .register("get_sub_list", api::usdpl::get_sub_list(&runtime))

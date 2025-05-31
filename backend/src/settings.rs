@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::{fmt::Display, path::PathBuf};
+use std::fmt::Display;
+use std::sync::{Arc, PoisonError, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::utils;
 
@@ -105,18 +106,50 @@ impl Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        let default_profile = utils::get_current_working_dir()
-            .unwrap()
-            .join("bin/core/config.yaml");
+        serde_json::from_str("{}").unwrap()
+    }
+}
+
+#[derive(Clone)]
+pub struct SettingsInstance {
+    settings: Arc<RwLock<Settings>>,
+    path: std::path::PathBuf,
+}
+
+impl SettingsInstance {
+    pub fn new<P: AsRef<std::path::Path>>(path: P) -> Self {
         Self {
-            skip_proxy: true,
-            override_dns: true,
-            enhanced_mode: EnhancedMode::FakeIp,
-            current_sub: default_profile.to_string_lossy().to_string(),
-            subscriptions: Vec::new(),
-            allow_remote_access: default_allow_remote_access(),
-            dashboard: default_dashboard(),
-            secret: default_secret(),
+            settings: Arc::new(RwLock::new(Settings::default())),
+            path: path.as_ref().to_path_buf(),
         }
+    }
+
+    pub fn open<P: AsRef<std::path::Path>>(path: P) -> Result<Self, JsonError> {
+        if path.as_ref().exists() {
+            let settings = Arc::new(RwLock::new(Settings::open(path.as_ref())?));
+            Ok(Self {
+                settings,
+                path: path.as_ref().to_path_buf(),
+            })
+        } else {
+            let instance = Self::new(path);
+            instance.save()?;
+            Ok(instance)
+        }
+    }
+
+    pub fn save(&self) -> Result<(), JsonError> {
+        self.settings.write().unwrap().save(&self.path)?;
+        Ok(())
+    }
+
+    pub fn get(&self) -> Settings {
+        self.settings.read().unwrap().clone()
+    }
+
+    pub fn update<T>(&self, function: impl Fn (RwLockWriteGuard<'_, Settings>) -> T) -> Result<T, JsonError> {
+        let result = function(self.settings.write().unwrap());
+        self.save()?;
+        Ok(result)
     }
 }

@@ -1,15 +1,12 @@
 use std::sync::{Arc, RwLock};
 
-use std::time::Duration;
-use std::thread;
-
 use crate::utils;
-use crate::settings::{Settings};
+use crate::settings::{Settings, SettingsInstance};
 
 use super::controller::Controller;
 
 pub struct Runtime {
-    settings: Arc<RwLock<Settings>>,
+    settings: SettingsInstance,
     clash_state: Arc<RwLock<Controller>>,
     downlaod_status: Arc<RwLock<DownloadStatus>>,
     update_status: Arc<RwLock<DownloadStatus>>,
@@ -29,7 +26,6 @@ pub enum DownloadStatus {
     Downloading,
     Failed,
     Success,
-    Error,
     None,
 }
 
@@ -58,11 +54,7 @@ impl Runtime {
         let update_status = DownloadStatus::None;
         let running_status = RunningStatus::None;
         Self {
-            settings: Arc::new(RwLock::new(
-                crate::settings::Settings::open(settings_path)
-                    .unwrap_or_default()
-                    .into(),
-            )),
+            settings: SettingsInstance::open(settings_path).unwrap(),
             clash_state: Arc::new(RwLock::new(clash)),
             downlaod_status: Arc::new(RwLock::new(download_status)),
             update_status: Arc::new(RwLock::new(update_status)),
@@ -70,7 +62,7 @@ impl Runtime {
         }
     }
 
-    pub(crate) fn settings_clone(&self) -> Arc<RwLock<Settings>> {
+    pub(crate) fn settings_clone(&self) -> SettingsInstance {
         self.settings.clone()
     }
 

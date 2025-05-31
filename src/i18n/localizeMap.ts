@@ -50,6 +50,7 @@ const I18N_KEYS = [
   "DOWNLOAD",
   "UPDATE_ALL",
   "DELETE",
+  "DELETE_FAILURE",
 
   // QAM
   "ENABLE_CLASH",

@@ -10,6 +10,7 @@
     "DOWNLOAD": "Download",
     "UPDATE_ALL": "Update All",
     "DELETE": "Delete",
+    "DELETE_FAILURE": "Failed to Delete",
     "ENABLE_CLASH": "Enable Clash",
     "ENABLE_CLASH_DESC": "Run Clash in background",
     "ENABLE_CLASH_FAILED": "Failed to start, please check /tmp/tomoon.log",

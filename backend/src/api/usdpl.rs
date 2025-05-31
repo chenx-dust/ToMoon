@@ -1,7 +1,7 @@
 use std::{fs, path::PathBuf, thread};
 
 use crate::{
-    services::clash::runtime::{DownloadStatus, RunningStatus}, settings::Subscription, utils
+    services::clash::runtime::{DownloadStatus, RunningStatus}, settings::{self, Subscription}, subscriptions, utils
 };
 
 use crate::services::clash::runtime::Runtime;
@@ -12,13 +12,11 @@ use usdpl_back::core::serdes::Primitive;
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 pub const NAME: &'static str = env!("CARGO_PKG_NAME");
 
-pub fn get_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
-    move |_| {
-        let is_clash_running = utils::is_clash_running();
-        log::debug!("get_enable() success");
-        log::info!("get clash status with {}", is_clash_running);
-        vec![is_clash_running.into()]
-    }
+pub fn get_clash_status(_: Vec<Primitive>) -> Vec<Primitive> {
+    let is_clash_running = utils::is_clash_running();
+    log::debug!("get_enable() success");
+    log::info!("get clash status with {}", is_clash_running);
+    vec![is_clash_running.into()]
 }
 
 pub fn set_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
@@ -30,13 +28,7 @@ pub fn set_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Pri
             log::error!("set_clash_status: invalid params");
             return vec![false.into()];
         };
-        let mut settings = match runtime_settings.write() {
-            Ok(x) => x,
-            Err(e) => {
-                log::error!("set_clash_status: failed to acquire settings write lock: {}", e);
-                return vec![false.into()];
-            }
-        };
+        let settings = runtime_settings.get();
         log::info!("set_clash_status: setting to {}", enabled);
         let mut clash = match clash.write() {
             Ok(x) => x,
@@ -55,9 +47,13 @@ pub fn set_clash_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Pri
         *run_status = RunningStatus::Loading;
         // 有些时候第一次没有选择订阅
         if settings.current_sub == "" {
-            log::info!("no profile provided, try to use first profile.");
+            log::info!("set_clash_status: no profile provided, try to use first profile.");
             if let Some(sub) = settings.subscriptions.get(0) {
-                settings.current_sub = sub.path.clone();
+                if let Err(e) = runtime_settings.update(|mut x| x.current_sub = sub.path.clone()) {
+                    log::error!("set_clash_status: error: {}", e);
+                    *run_status = RunningStatus::Failed;
+                    return vec![false.into()];
+                }
             } else {
                 log::error!("no profile provided.");
                 *run_status = RunningStatus::Failed;
@@ -128,133 +124,12 @@ pub fn download_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primiti
                                 }
                             }
                         };
-                        //是一个本地文件
-                        if let Some(local_file) = utils::get_file_path(url.clone()) {
-                            let local_file = PathBuf::from(local_file);
-                            if local_file.exists() {
-                                let file_content = match fs::read_to_string(local_file) {
-                                    Ok(x) => x,
-                                    Err(e) => {
-                                        log::error!("Failed while creating sub dir.");
-                                        log::error!("Error Message:{}", e);
-                                        update_status(DownloadStatus::Error);
-                                        return;
-                                    }
-                                };
-                                if !utils::check_yaml(&file_content) {
-                                    log::error!(
-                                        "The downloaded subscription is not a legal profile."
-                                    );
-                                    update_status(DownloadStatus::Error);
-                                    return;
-                                }
-                                //保存订阅
-                                let s: String = rand::thread_rng()
-                                    .sample_iter(&Alphanumeric)
-                                    .take(5)
-                                    .map(char::from)
-                                    .collect();
-                                let path = path.join(s + ".yaml");
-                                if let Some(parent) = path.parent() {
-                                    if let Err(e) = std::fs::create_dir_all(parent) {
-                                        log::error!("Failed while creating sub dir.");
-                                        log::error!("Error Message:{}", e);
-                                        update_status(DownloadStatus::Error);
-                                        return;
-                                    }
-                                }
-                                let path = path.to_str().unwrap();
-                                if let Err(e) = fs::write(path, file_content) {
-                                    log::error!("Failed while saving sub, path: {}", path);
-                                    log::error!("Error Message:{}", e);
-                                    return;
-                                }
-                                //修改下载状态
-                                log::info!("Download profile successfully.");
-                                update_status(DownloadStatus::Success);
-                                //存入设置
-                                match runtime_setting.write() {
-                                    Ok(mut x) => {
-                                        x.subscriptions
-                                            .push(Subscription::new(path.to_string(), url.clone()));
-                                    }
-                                    Err(e) => {
-                                        log::error!(
-                                        "download_sub() faild to acquire runtime_setting write {}",
-                                        e
-                                    );
-                                        update_status(DownloadStatus::Error);
-                                    }
-                                }
-                            } else {
-                                log::error!("Cannt found file {}", local_file.to_str().unwrap());
-                                update_status(DownloadStatus::Error);
-                                return;
+                        match subscriptions::download_sub(url, false, runtime_setting) {
+                            Ok(_) => update_status(DownloadStatus::Success),
+                            Err(e) => {
+                                update_status(DownloadStatus::Failed);
+                                log::error!("download_sub() failed to download sub {}", e);
                             }
-                            // 是一个链接
-                        } else {
-                            match minreq::get(url.clone())
-                                .with_header(
-                                    "User-Agent",
-                                    format!("ToMoonClash/{}", env!("CARGO_PKG_VERSION")),
-                                )
-                                .with_timeout(15)
-                                .send()
-                            {
-                                Ok(x) => {
-                                    let response = x.as_str().unwrap();
-                                    if !utils::check_yaml(&String::from(response)) {
-                                        log::error!(
-                                            "The downloaded subscription is not a legal profile."
-                                        );
-                                        update_status(DownloadStatus::Error);
-                                        return;
-                                    }
-                                    let s: String = rand::thread_rng()
-                                        .sample_iter(&Alphanumeric)
-                                        .take(5)
-                                        .map(char::from)
-                                        .collect();
-                                    let path = path.join(s + ".yaml");
-                                    //保存订阅
-                                    if let Some(parent) = path.parent() {
-                                        if let Err(e) = std::fs::create_dir_all(parent) {
-                                            log::error!("Failed while creating sub dir.");
-                                            log::error!("Error Message:{}", e);
-                                            update_status(DownloadStatus::Error);
-                                            return;
-                                        }
-                                    }
-                                    let path = path.to_str().unwrap();
-                                    if let Err(e) = fs::write(path, response) {
-                                        log::error!("Failed while saving sub.");
-                                        log::error!("Error Message:{}", e);
-                                    }
-                                    //下载成功
-                                    //修改下载状态
-                                    log::info!("Download profile successfully.");
-                                    update_status(DownloadStatus::Success);
-                                    //存入设置
-                                    match runtime_setting.write() {
-                                        Ok(mut x) => {
-                                            x.subscriptions
-                                                .push(Subscription::new(path.to_string(), url));
-                                        }
-                                        Err(e) => {
-                                            log::error!(
-                                        "download_sub() faild to acquire runtime_setting write {}",
-                                        e
-                                    );
-                                            update_status(DownloadStatus::Error);
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!("Failed while downloading sub.");
-                                    log::error!("Error Message:{}", e);
-                                    update_status(DownloadStatus::Failed);
-                                }
-                            };
                         }
                     });
                 }
@@ -304,74 +179,53 @@ pub fn get_running_status(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<P
 pub fn get_sub_list(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
     move |_| {
-        match runtime_setting.read() {
+        let x = runtime_setting.get();
+        match serde_json::to_string(&x.subscriptions) {
             Ok(x) => {
-                match serde_json::to_string(&x.subscriptions) {
-                    Ok(x) => {
-                        //返回 json 编码的订阅
-                        return vec![x.into()];
-                    }
-                    Err(e) => {
-                        log::error!("Error while serializing data structures");
-                        log::error!("Error message: {}", e);
-                        return vec![];
-                    }
-                };
+                //返回 json 编码的订阅
+                return vec![x.into()];
             }
             Err(e) => {
-                log::error!(
-                    "get_sub_list() faild to acquire runtime_setting write {}",
-                    e
-                );
+                log::error!("Error while serializing data structures");
+                log::error!("Error message: {}", e);
+                return vec![];
             }
         }
-        return vec![];
     }
 }
 
 // get_current_sub 获取当前订阅
 pub fn get_current_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
-    move |_| {
-        match runtime_setting.read() {
-            Ok(x) => {
-                return vec![x.current_sub.clone().into()];
-            }
-            Err(e) => {
-                log::error!("get_current_sub() faild , {}", e);
-            }
-        }
-        return vec![];
-    }
+    move |_| vec![runtime_setting.get().current_sub.clone().into()]
 }
 
 pub fn delete_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     let runtime_setting = runtime.settings_clone();
     move |params| {
-        if let Some(Primitive::F64(id)) = params.get(0) {
-            match runtime_setting.write() {
-                Ok(mut x) => {
-                    if let Some(item) = x.subscriptions.get(*id as usize) {
-                        match fs::remove_file(item.path.as_str()) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                log::error!("delete file error: {}", e);
-                            }
-                        }
+        let Some(Primitive::U32(id)) = params.get(0) else {
+            return vec![Primitive::Bool(false), Primitive::String(String::from("Invalid id"))];
+        };
+        let result = runtime_setting.update(|mut settings| {
+            if let Some(item) = settings.subscriptions.get(*id as usize) {
+                match fs::remove_file(item.path.as_str()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        log::error!("delete file error: {}", e);
                     }
-                    if let Some(item) = x.subscriptions.get(*id as usize) {
-                        if x.current_sub == item.path {
-                            x.current_sub = "".to_string();
-                        }
-                        x.subscriptions.remove(*id as usize);
-                    }
-                }
-                Err(e) => {
-                    log::error!("delete_sub() faild to acquire runtime_setting write {}", e);
                 }
             }
+            if let Some(item) = settings.subscriptions.get(*id as usize) {
+                if settings.current_sub == item.path {
+                    settings.current_sub = "".to_string();
+                }
+                settings.subscriptions.remove(*id as usize);
+            }
+        });
+        match result {
+            Ok(_) => vec![Primitive::Bool(true), Primitive::String("".to_string())],
+            Err(e) => vec![Primitive::Bool(false), Primitive::String(e.to_string())]
         }
-        return vec![];
     }
 }
 
@@ -381,15 +235,7 @@ pub fn set_sub(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitive> {
     move |params: Vec<Primitive>| {
         if let Some(Primitive::String(path)) = params.get(0) {
             //更新到配置文件中
-            match runtime_setting.write() {
-                Ok(mut x) => {
-                    x.current_sub = (*path).clone();
-                }
-                Err(e) => {
-                    log::error!("get_enable failed to acquire settings read lock: {}", e);
-                    return vec![];
-                }
-            };
+            runtime_setting.update(|mut x| x.current_sub = (*path).clone());
             //更新到当前内存中
             match runtime_clash.write() {
                 Ok(mut x) => {
@@ -411,73 +257,9 @@ pub fn update_subs(runtime: &Runtime) -> impl Fn(Vec<Primitive>) -> Vec<Primitiv
     move |_| {
         if let Ok(mut x) = runtime_update_status.write() {
             *x = DownloadStatus::Downloading;
-            drop(x);
-            if let Ok(v) = runtime_setting.write() {
-                let subs = v.subscriptions.clone();
-                drop(v);
-                let runtime_update_status = runtime_update_status.clone();
-                thread::spawn(move || {
-                    for i in subs {
-                        //是一个本地文件
-                        if utils::get_file_path(i.url.clone()).is_some() {
-                            continue;
-                        }
-                        thread::spawn(move || {
-                            match minreq::get(i.url.clone())
-                                .with_header(
-                                    "User-Agent",
-                                    format!(
-                                        "ToMoon/{} mihomo/1.18.3 Clash/v1.18.0",
-                                        env!("CARGO_PKG_VERSION")
-                                    ),
-                                )
-                                .with_timeout(15)
-                                .send()
-                            {
-                                Ok(response) => {
-                                    let response = match response.as_str() {
-                                        Ok(x) => x,
-                                        Err(_) => {
-                                            log::error!("Error occurred while parsing response.");
-                                            return;
-                                        }
-                                    };
-                                    if !utils::check_yaml(&response.to_string()) {
-                                        log::error!(
-                                            "The downloaded subscription is not a legal profile."
-                                        );
-                                        return;
-                                    }
-                                    match fs::write(i.path.clone(), response) {
-                                        Ok(_) => {
-                                            log::info!("Subscription {} updated.", i.path);
-                                        }
-                                        Err(e) => {
-                                            log::error!(
-                                        "Error occurred while write to file in update_subs(). {}",
-                                        e
-                                    );
-                                            return;
-                                        }
-                                    }
-                                }
-                                Err(e) => {
-                                    log::error!("Error occurred while download sub {}", i.url);
-                                    log::error!("Error Message : {}", e);
-                                }
-                            }
-                        });
-                    }
-                    //下载执行完毕
-                    if let Ok(mut x) = runtime_update_status.write() {
-                        *x = DownloadStatus::Success;
-                    } else {
-                        log::error!(
-                            "Error occurred while acquire runtime_update_status write lock."
-                        );
-                    }
-                });
-            }
+            let subs = runtime_setting.get().subscriptions;
+            let runtime_update_status = runtime_update_status.clone();
+            thread::spawn(move || );
         }
         return vec![];
     }

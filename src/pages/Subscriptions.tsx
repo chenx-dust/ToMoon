@@ -32,9 +32,6 @@ export const Subscriptions: FC<SubProp> = ({ Subscriptions }) => {
         case "Downloading":
           setDownloadTips("Downloading...");
           break;
-        case "Error":
-          setDownloadTips("Download Error");
-          break;
         case "Failed":
           setDownloadTips("Download Failed");
           break;

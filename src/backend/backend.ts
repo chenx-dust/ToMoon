@@ -55,8 +55,8 @@ export async function getSubList(): Promise<String> {
   return (await call_backend("get_sub_list", []))[0];
 }
 
-export async function deleteSub(value: Number): Promise<any> {
-  return (await call_backend("delete_sub", [value]))[0];
+export async function deleteSub(value: Number): Promise<[boolean, String]> {
+  return (await call_backend("delete_sub", [value])).slice(0, 2);
 }
 
 export async function setSub(value: String): Promise<any> {

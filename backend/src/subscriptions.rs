@@ -1,9 +1,9 @@
 use rand::{distributions::Alphanumeric, Rng};
-use std::{fs, path::PathBuf, sync::{Arc, RwLock}};
+use std::{fs, path::PathBuf, thread};
 use content_disposition;
 
 use crate::{
-    services::clash::controller::{ClashError, ClashErrorKind}, settings::Settings, utils::{self, get_sub_dir}
+    services::clash::controller::{ClashError, ClashErrorKind}, settings::{SettingsInstance, Subscription}, utils::{self, get_sub_dir}
 };
 
 fn sanitize_filename(name: String) -> String {
@@ -20,7 +20,7 @@ fn gen_random_name() -> String {
         .collect()
 }
 
-pub fn download_sub(url: String, subconv: bool, settings: Arc<RwLock<Settings>>) -> Result<String, ClashError> {
+pub fn download_sub(url: String, subconv: bool, settings: SettingsInstance) -> Result<String, ClashError> {
     let mut sub_name  = gen_random_name();
     let file_content: String;
     //是一个本地文件
@@ -72,10 +72,7 @@ pub fn download_sub(url: String, subconv: bool, settings: Arc<RwLock<Settings>>)
         match minreq::get(url.clone())
             .with_header(
                 "User-Agent",
-                format!(
-                    "ToMoon/{} mihomo/1.19.4 clash-verge/2.2.3 Clash/v1.18.0",
-                    env!("CARGO_PKG_VERSION")
-                ),
+                utils::get_user_agent(),
             )
             .with_timeout(120)
             .send()
@@ -167,23 +164,73 @@ pub fn download_sub(url: String, subconv: bool, settings: Arc<RwLock<Settings>>)
     //修改下载状态
     log::info!("Download profile successfully.");
     //存入设置
-    match settings.write() {
-        Ok(mut x) => {
-            x.subscriptions.push(crate::settings::Subscription::new(
-                filepath.to_str().unwrap().to_string(),
-                url.clone(),
-            ));
-        }
-        Err(e) => {
-            log::error!(
-                "download_sub() faild to acquire runtime_setting write {}",
-                e
-            );
-            return Err(ClashError {
+    settings.update(|mut x|
+        x.subscriptions.push(crate::settings::Subscription::new(
+            filepath.to_str().unwrap().to_string(),
+            url.clone())
+        ))
+        .map_err(|e| ClashError {
                 message: e.to_string(),
-                error_kind: ClashErrorKind::InnerError,
-            });
-        }
-    };
+            error_kind: ClashErrorKind::ConfigNotFound,
+        })?;
     Ok(sub_name)
+}
+
+pub fn update_sub(subs: Vec<Subscription>) {
+    for i in subs {
+        //是一个本地文件
+        if utils::get_file_path(i.url.clone()).is_some() {
+            continue;
+        }
+        thread::spawn(move || {
+            match minreq::get(i.url.clone())
+                .with_header(
+                    "User-Agent",
+                    utils::get_user_agent(),
+                )
+                .with_timeout(15)
+                .send()
+            {
+                Ok(response) => {
+                    let response = match response.as_str() {
+                        Ok(x) => x,
+                        Err(_) => {
+                            log::error!("Error occurred while parsing response.");
+                            return;
+                        }
+                    };
+                    if !utils::check_yaml(&response.to_string()) {
+                        log::error!(
+                            "The downloaded subscription is not a legal profile."
+                        );
+                        return;
+                    }
+                    match fs::write(i.path.clone(), response) {
+                        Ok(_) => {
+                            log::info!("Subscription {} updated.", i.path);
+                        }
+                        Err(e) => {
+                            log::error!(
+                        "Error occurred while write to file in update_subs(). {}",
+                        e
+                    );
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Error occurred while download sub {}", i.url);
+                    log::error!("Error Message : {}", e);
+                }
+            }
+        });
+    }
+    //下载执行完毕
+    if let Ok(mut x) = runtime_update_status.write() {
+        *x = DownloadStatus::Success;
+    } else {
+        log::error!(
+            "Error occurred while acquire runtime_update_status write lock."
+        );
+    }
 }
